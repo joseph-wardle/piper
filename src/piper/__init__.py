@@ -1,2 +1,9 @@
+from __future__ import annotations
+
+from piper.cli import main as _main
+
+__all__ = ["main"]
+
+
 def main() -> None:
-    print("piper: contract defined in docs/contracts/v1-cli.md")
+    raise SystemExit(_main())

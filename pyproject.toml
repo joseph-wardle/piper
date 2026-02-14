@@ -1,7 +1,7 @@
 [project]
 name = "piper"
 version = "0.1.0"
-description = "A CLI utility belt"
+description = "A CLI utility belt for working with the BYU Animation Program's USD pipeline"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = []
@@ -18,6 +18,15 @@ dev = [
     "ruff>=0.15.1",
     "ty>=0.0.17",
 ]
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ty.environment]
+python-version = "3.13"
 
 [tool.ty.src]
 include = ["src", "tests"]
