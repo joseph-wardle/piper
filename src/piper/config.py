@@ -16,6 +16,9 @@ DEFAULT_GOTO_TEMPLATES: dict[str, tuple[str, ...]] = {
     "environment": ("{root}/production/set/{id}",),
 }
 DEFAULT_SCRIPT_DIR_NAME = "scripts"
+ENV_SHOW = "PIPER_SHOW"
+ENV_SCRIPT_DIRS = "PIPER_SCRIPT_DIRS"
+ENV_GOTO_PREFIX = "PIPER_GOTO_"
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,12 @@ class UserConfig:
 @dataclass(frozen=True)
 class ShowOverrides:
     path: Path
+    goto_templates: dict[str, tuple[str, ...]]
+    script_dirs: tuple[Path, ...]
+
+
+@dataclass(frozen=True)
+class EnvironmentOverrides:
     goto_templates: dict[str, tuple[str, ...]]
     script_dirs: tuple[Path, ...]
 
@@ -81,6 +90,55 @@ def _find_project_root() -> Path:
 
 def _default_script_dirs() -> tuple[Path, ...]:
     return (_find_project_root() / DEFAULT_SCRIPT_DIR_NAME,)
+
+
+def _dedupe_paths(paths: list[Path]) -> tuple[Path, ...]:
+    deduped: list[Path] = []
+    seen: set[Path] = set()
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        deduped.append(path)
+    return tuple(deduped)
+
+
+def _split_env_list(value: str) -> list[str]:
+    values = [item for item in value.split(os.pathsep) if item]
+    return values
+
+
+def load_environment_overrides(
+    environ: Mapping[str, str], *, base_dir: Path
+) -> EnvironmentOverrides:
+    goto_templates: dict[str, tuple[str, ...]] = {}
+    script_dirs: tuple[Path, ...] = ()
+
+    for key, value in environ.items():
+        if not key.startswith(ENV_GOTO_PREFIX):
+            continue
+        if not value:
+            continue
+        kind = key[len(ENV_GOTO_PREFIX) :].strip().lower()
+        if not kind:
+            continue
+        templates = tuple(_split_env_list(value))
+        if templates:
+            goto_templates[kind] = templates
+
+    raw_script_dirs = environ.get(ENV_SCRIPT_DIRS, "")
+    if raw_script_dirs:
+        script_dirs = _dedupe_paths(
+            [
+                _normalize_path(entry, base_dir=base_dir)
+                for entry in _split_env_list(raw_script_dirs)
+            ]
+        )
+
+    return EnvironmentOverrides(
+        goto_templates=goto_templates,
+        script_dirs=script_dirs,
+    )
 
 
 def _parse_templates(
@@ -169,16 +227,9 @@ def _parse_script_dirs(
                 )
             values.append(item)
 
-    deduped: list[Path] = []
-    seen: set[Path] = set()
-    for value in values:
-        normalized = _normalize_path(value, base_dir=base_dir)
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        deduped.append(normalized)
-
-    return tuple(deduped)
+    return _dedupe_paths(
+        [_normalize_path(value, base_dir=base_dir) for value in values]
+    )
 
 
 def load_user_config(path: Path) -> UserConfig:
@@ -263,7 +314,7 @@ def _resolve_show_name(
     environ: Mapping[str, str],
     user_config: UserConfig,
 ) -> str:
-    requested_show = show_arg or environ.get("PIPER_SHOW")
+    requested_show = show_arg or environ.get(ENV_SHOW)
     if requested_show:
         if requested_show not in user_config.show_roots:
             known = ", ".join(sorted(user_config.show_roots)) or "<none>"
@@ -293,6 +344,35 @@ def _resolve_show_name(
     )
 
 
+def _merge_goto_templates(
+    *,
+    built_ins: Mapping[str, tuple[str, ...]],
+    user_templates: Mapping[str, tuple[str, ...]],
+    show_templates: Mapping[str, tuple[str, ...]],
+    env_templates: Mapping[str, tuple[str, ...]],
+) -> dict[str, tuple[str, ...]]:
+    merged = dict(built_ins)
+    merged.update(user_templates)
+    merged.update(show_templates)
+    merged.update(env_templates)
+    return merged
+
+
+def _resolve_script_dirs(
+    *,
+    env_overrides: EnvironmentOverrides,
+    show_overrides: ShowOverrides,
+    user_config: UserConfig,
+) -> tuple[Path, ...]:
+    if env_overrides.script_dirs:
+        return env_overrides.script_dirs
+    if show_overrides.script_dirs:
+        return show_overrides.script_dirs
+    if user_config.script_dirs:
+        return user_config.script_dirs
+    return _default_script_dirs()
+
+
 def resolve_context(
     show_arg: str | None,
     *,
@@ -319,17 +399,19 @@ def resolve_context(
         raise ShowResolutionError(f"show root does not exist: {show_root}")
 
     show_overrides = load_show_overrides(show_root)
+    env_overrides = load_environment_overrides(env, base_dir=runtime_cwd)
 
-    goto_templates = dict(DEFAULT_GOTO_TEMPLATES)
-    goto_templates.update(user_config.goto_templates)
-    goto_templates.update(show_overrides.goto_templates)
-
-    if show_overrides.script_dirs:
-        script_dirs = show_overrides.script_dirs
-    elif user_config.script_dirs:
-        script_dirs = user_config.script_dirs
-    else:
-        script_dirs = _default_script_dirs()
+    goto_templates = _merge_goto_templates(
+        built_ins=DEFAULT_GOTO_TEMPLATES,
+        user_templates=user_config.goto_templates,
+        show_templates=show_overrides.goto_templates,
+        env_templates=env_overrides.goto_templates,
+    )
+    script_dirs = _resolve_script_dirs(
+        env_overrides=env_overrides,
+        show_overrides=show_overrides,
+        user_config=user_config,
+    )
 
     show_config = ShowConfig(
         name=show_name,
