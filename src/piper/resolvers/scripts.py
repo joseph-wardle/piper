@@ -1,9 +1,19 @@
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from piper.errors import ScriptResolutionError
 from piper.models import ShowConfig
+
+
+def _is_basename_only(script_name: str) -> bool:
+    for path_type in (PurePosixPath, PureWindowsPath):
+        parsed = path_type(script_name)
+        if parsed.anchor:
+            return False
+        if len(parsed.parts) != 1:
+            return False
+    return True
 
 
 def validate_script_name(script_name: str) -> None:
@@ -13,8 +23,10 @@ def validate_script_name(script_name: str) -> None:
     if script_name in {".", ".."}:
         raise ScriptResolutionError("script name cannot be '.' or '..'")
 
-    if "/" in script_name or "\\" in script_name:
-        raise ScriptResolutionError("script name must not include path separators")
+    if not _is_basename_only(script_name):
+        raise ScriptResolutionError(
+            "script name must be a basename only (no path separators)"
+        )
 
 
 def resolve_script_path(show: ShowConfig, script_name: str) -> Path:

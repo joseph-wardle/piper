@@ -31,6 +31,15 @@ class ScriptResolverTests(unittest.TestCase):
         with self.assertRaises(ScriptResolutionError):
             validate_script_name("folder/script")
 
+        with self.assertRaises(ScriptResolutionError):
+            validate_script_name(r"folder\\script")
+
+        with self.assertRaises(ScriptResolutionError):
+            validate_script_name("/tmp/script")
+
+        with self.assertRaises(ScriptResolutionError):
+            validate_script_name(r"C:\\temp\\script")
+
     def test_resolve_script_path_supports_py_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -43,6 +52,22 @@ class ScriptResolverTests(unittest.TestCase):
 
             resolved = resolve_script_path(show, "rm_generate_report")
             self.assertEqual(resolved, target)
+
+    def test_resolve_script_path_prefers_exact_name_over_py_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            scripts = root / "scripts"
+            scripts.mkdir(parents=True)
+
+            exact = scripts / "rm_generate_report"
+            exact.write_text("print('exact')\n", encoding="utf-8")
+            fallback = scripts / "rm_generate_report.py"
+            fallback.write_text("print('py')\n", encoding="utf-8")
+
+            show = self._make_show(root, (scripts,))
+            resolved = resolve_script_path(show, "rm_generate_report")
+
+            self.assertEqual(resolved, exact)
 
     def test_list_available_scripts_is_sorted_unique(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

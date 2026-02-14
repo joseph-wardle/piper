@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -127,6 +128,7 @@ class CLITests(unittest.TestCase):
 
                 payload = {
                     "cwd": str(pathlib.Path.cwd()),
+                    "python": sys.executable,
                     "args": sys.argv[1:],
                 }
                 pathlib.Path("run_output.json").write_text(json.dumps(payload), encoding="utf-8")
@@ -146,6 +148,9 @@ class CLITests(unittest.TestCase):
                 (workdir / "run_output.json").read_text(encoding="utf-8")
             )
             self.assertEqual(payload["cwd"], str(workdir))
+            self.assertEqual(
+                Path(payload["python"]).resolve(), Path(sys.executable).resolve()
+            )
             self.assertEqual(payload["args"], ["--today"])
 
     def test_run_list_prints_sorted_names(self) -> None:
