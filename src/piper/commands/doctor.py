@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser, Namespace
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 from piper.config import get_user_config_path, load_user_config, resolve_context
 from piper.errors import ConfigError, PiperError
@@ -94,6 +94,11 @@ class DoctorCommand:
         if environ.get("PIPER_SHELL_INTEGRATION") == "1":
             print(_status("OK", "shell integration marker present"))
         else:
-            print(_status("WARN", "shell integration marker missing (PIPER_SHELL_INTEGRATION=1)"))
+            print(
+                _status(
+                    "WARN",
+                    "shell integration marker missing (PIPER_SHELL_INTEGRATION=1)",
+                )
+            )
 
         return 1 if blocking_errors else 0

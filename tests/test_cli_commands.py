@@ -128,7 +128,9 @@ class CLITests(unittest.TestCase):
             self.assertEqual(out, "")
             self.assertEqual(err, "")
 
-            payload = json.loads((workdir / "run_output.json").read_text(encoding="utf-8"))
+            payload = json.loads(
+                (workdir / "run_output.json").read_text(encoding="utf-8")
+            )
             self.assertEqual(payload["cwd"], str(workdir))
             self.assertEqual(payload["args"], ["--today"])
 

@@ -10,7 +10,9 @@ from piper.resolvers.paths import UnknownKindError, resolve_existing_path
 
 
 class PathResolverTests(unittest.TestCase):
-    def _make_show(self, root: Path, templates: dict[str, tuple[str, ...]]) -> ShowConfig:
+    def _make_show(
+        self, root: Path, templates: dict[str, tuple[str, ...]]
+    ) -> ShowConfig:
         return ShowConfig(
             name="bobo",
             root=root,

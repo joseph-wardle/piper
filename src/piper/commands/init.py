@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser, Namespace
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 from piper.models import ResolvedContext
 

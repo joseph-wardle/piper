@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser, Namespace
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 from piper.errors import PiperError
 from piper.models import ResolvedContext
@@ -15,7 +15,9 @@ class GotoCommand:
     requires_context = True
 
     def configure(self, parser: ArgumentParser) -> None:
-        parser.add_argument("kind", help="Configured path kind, e.g. shot, asset, environment")
+        parser.add_argument(
+            "kind", help="Configured path kind, e.g. shot, asset, environment"
+        )
         parser.add_argument("id", help="Identifier value for the selected kind")
 
     def run(

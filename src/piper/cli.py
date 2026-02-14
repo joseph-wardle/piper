@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Mapping, Sequence
 
 from piper.commands import Command, built_in_commands
 from piper.config import resolve_context

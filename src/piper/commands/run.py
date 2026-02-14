@@ -4,8 +4,8 @@ import argparse
 import subprocess
 import sys
 from argparse import ArgumentParser, Namespace
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 from piper.errors import PiperError
 from piper.models import ResolvedContext

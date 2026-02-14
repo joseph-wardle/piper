@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser, Namespace
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping, Protocol
+from typing import Protocol
 
 from piper.models import ResolvedContext
 
@@ -12,8 +13,7 @@ class Command(Protocol):
     help: str
     requires_context: bool
 
-    def configure(self, parser: ArgumentParser) -> None:
-        ...
+    def configure(self, parser: ArgumentParser) -> None: ...
 
     def run(
         self,
@@ -22,5 +22,4 @@ class Command(Protocol):
         context: ResolvedContext | None,
         environ: Mapping[str, str],
         cwd: Path,
-    ) -> int:
-        ...
+    ) -> int: ...

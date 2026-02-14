@@ -15,18 +15,22 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.1",
-    "ty>=0.0.17",
+    "pytest",
+    "ruff",
+    "ty",
 ]
 
 [tool.ruff]
 target-version = "py313"
 
 [tool.ruff.lint]
-extend-select = ["I"]
+extend-select = ["I", "UP", "B", "SIM"]
 
 [tool.ty.environment]
 python-version = "3.13"
 
 [tool.ty.src]
 include = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
