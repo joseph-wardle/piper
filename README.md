@@ -25,6 +25,30 @@ uv run piper doctor
 uv run ruff check . && uv run ruff format --check . && uv run ty check && uv run pytest -q
 ```
 
+## Install CLI on PATH
+
+`piper` must be installed before you call `piper init ...` from shell startup files.
+
+Install from this repo:
+
+```bash
+cd /users/animation/joseward/Documents/piper
+uv tool install --editable .
+```
+
+Ensure uv tool binaries are on PATH:
+
+```bash
+uv tool update-shell
+```
+
+Verify:
+
+```bash
+which piper
+piper --help
+```
+
 ## Shell Setup (`goto`)
 
 `piper goto ...` can only change directory when shell integration is loaded.
@@ -32,13 +56,17 @@ uv run ruff check . && uv run ruff format --check . && uv run ty check && uv run
 Bash (`~/.bashrc`):
 
 ```bash
-eval "$(piper init bash)"
+if command -v piper >/dev/null 2>&1; then
+  eval "$(piper init bash)"
+fi
 ```
 
 Zsh (`~/.zshrc`):
 
 ```zsh
-eval "$(piper init zsh)"
+if command -v piper >/dev/null 2>&1; then
+  eval "$(piper init zsh)"
+fi
 ```
 
 Reload your shell, then verify:
@@ -128,6 +156,18 @@ Shell wrapper is not loaded. Run:
 ```bash
 eval "$(piper init bash)"   # or zsh
 ```
+
+### `command not found: piper` on shell startup
+
+Install `piper` and ensure uv tool bin is on PATH:
+
+```bash
+cd /users/animation/joseward/Documents/piper
+uv tool install --editable .
+uv tool update-shell
+```
+
+Use the guarded shell snippet from the shell setup section so startup does not fail before install.
 
 ### `unknown show` or `unable to resolve show`
 
