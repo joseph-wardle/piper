@@ -74,12 +74,12 @@ class CLITests(unittest.TestCase):
         env = {"XDG_CONFIG_HOME": str(xdg_home)}
         return env, workdir, show_root, scripts_dir
 
-    def test_path_and_goto_print_resolved_path(self) -> None:
+    def test_path_and_goto_print_machine_clean_resolved_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             env, workdir, show_root, _scripts_dir = self._build_test_layout(root)
 
-            expected = str(show_root / "production" / "shot" / "F_160")
+            expected = f"{show_root / 'production' / 'shot' / 'F_160'}\n"
 
             code, out, err = self._invoke(
                 ["path", "shot", "F_160"],
@@ -87,7 +87,7 @@ class CLITests(unittest.TestCase):
                 cwd=workdir,
             )
             self.assertEqual(code, 0)
-            self.assertEqual(out.strip(), expected)
+            self.assertEqual(out, expected)
             self.assertEqual(err, "")
 
             code, out, err = self._invoke(
@@ -95,20 +95,6 @@ class CLITests(unittest.TestCase):
                 env=env,
                 cwd=workdir,
             )
-            self.assertEqual(code, 0)
-            self.assertEqual(out.strip(), expected)
-            self.assertEqual(err, "")
-
-    def test_path_output_is_machine_clean(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            env, workdir, show_root, _scripts_dir = self._build_test_layout(root)
-
-            expected = f"{show_root / 'production' / 'shot' / 'F_160'}\n"
-            code, out, err = self._invoke(
-                ["path", "shot", "F_160"], env=env, cwd=workdir
-            )
-
             self.assertEqual(code, 0)
             self.assertEqual(out, expected)
             self.assertEqual(err, "")
@@ -153,6 +139,19 @@ class CLITests(unittest.TestCase):
             )
             self.assertEqual(payload["args"], ["--today"])
 
+    def test_run_missing_script_returns_non_zero_and_stderr(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            env, workdir, _show_root, _scripts_dir = self._build_test_layout(root)
+
+            code, out, err = self._invoke(
+                ["run", "does_not_exist"], env=env, cwd=workdir
+            )
+
+            self.assertEqual(code, 1)
+            self.assertEqual(out, "")
+            self.assertIn("does_not_exist", err)
+
     def test_run_list_prints_sorted_names(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -195,6 +194,15 @@ class CLITests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("show resolution", out)
             self.assertEqual(err, "")
+
+    def test_invalid_cli_usage_returns_parse_error_exit_code(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            env, workdir, _show_root, _scripts_dir = self._build_test_layout(root)
+
+            code, _out, err = self._invoke(["path", "shot"], env=env, cwd=workdir)
+            self.assertEqual(code, 2)
+            self.assertIn("usage:", err)
 
 
 if __name__ == "__main__":

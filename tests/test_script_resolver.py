@@ -69,6 +69,19 @@ class ScriptResolverTests(unittest.TestCase):
 
             self.assertEqual(resolved, exact)
 
+    def test_resolve_script_path_raises_when_script_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            scripts = root / "scripts"
+            scripts.mkdir(parents=True)
+            show = self._make_show(root, (scripts,))
+
+            with self.assertRaises(ScriptResolutionError) as ctx:
+                resolve_script_path(show, "does_not_exist")
+
+            self.assertIn("does_not_exist", str(ctx.exception))
+            self.assertIn(str(scripts), str(ctx.exception))
+
     def test_list_available_scripts_is_sorted_unique(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

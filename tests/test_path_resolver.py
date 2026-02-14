@@ -22,25 +22,48 @@ class PathResolverTests(unittest.TestCase):
             show_config_path=root / "show.toml",
         )
 
-    def test_resolve_existing_path_picks_first_existing_candidate(self) -> None:
+    def test_resolve_existing_path_picks_first_existing_candidate_per_kind(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            target = root / "production" / "set" / "Forest_layout"
-            target.mkdir(parents=True)
+            shot_target = root / "production" / "shot" / "F_160"
+            shot_target.mkdir(parents=True)
+            asset_target = root / "production" / "asset" / "fence_door"
+            asset_target.mkdir(parents=True)
+            environment_target = root / "production" / "set" / "Forest_layout"
+            environment_target.mkdir(parents=True)
 
             show = self._make_show(
                 root,
                 {
+                    "shot": (
+                        "{root}/production/shot/missing/{id}",
+                        "{root}/production/shot/{id}",
+                    ),
+                    "asset": (
+                        "{root}/production/asset/missing/{id}",
+                        "{root}/production/asset/{id}",
+                    ),
                     "environment": (
                         "{root}/production/missing/{id}",
                         "{root}/production/set/{id}",
-                    )
+                    ),
                 },
             )
 
-            resolved = resolve_existing_path(show, "environment", "Forest_layout")
-
-            self.assertEqual(resolved, target)
+            self.assertEqual(
+                resolve_existing_path(show, "shot", "F_160"),
+                shot_target,
+            )
+            self.assertEqual(
+                resolve_existing_path(show, "asset", "fence_door"),
+                asset_target,
+            )
+            self.assertEqual(
+                resolve_existing_path(show, "environment", "Forest_layout"),
+                environment_target,
+            )
 
     def test_unknown_kind_raises(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -49,18 +72,6 @@ class PathResolverTests(unittest.TestCase):
 
             with self.assertRaises(UnknownKindError):
                 resolve_existing_path(show, "asset", "fence_door")
-
-    def test_missing_candidates_raise_resolution_error(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            show = self._make_show(root, {"shot": ("{root}/production/shot/{id}",)})
-
-            with self.assertRaises(PathResolutionError) as ctx:
-                resolve_existing_path(show, "shot", "F_999")
-
-            self.assertEqual(ctx.exception.kind, "shot")
-            self.assertEqual(ctx.exception.identifier, "F_999")
-            self.assertEqual(len(ctx.exception.candidates), 1)
 
     def test_glob_template_resolves_nested_asset(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -121,19 +132,29 @@ class PathResolverTests(unittest.TestCase):
 
             self.assertIn("unknown placeholder", str(ctx.exception))
 
-    def test_missing_path_error_contains_attempted_path(self) -> None:
+    def test_missing_path_error_includes_attempted_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             show = self._make_show(
                 root,
-                {"shot": ("{root}/production/shot/{id}",)},
+                {
+                    "shot": (
+                        "{root}/production/shot/{id}",
+                        "{root}/production/shot/archive/{id}",
+                    )
+                },
             )
 
             with self.assertRaises(PathResolutionError) as ctx:
                 resolve_existing_path(show, "shot", "MISSING")
 
-            expected = root / "production" / "shot" / "MISSING"
-            self.assertIn(str(expected), str(ctx.exception))
+            first = root / "production" / "shot" / "MISSING"
+            second = root / "production" / "shot" / "archive" / "MISSING"
+            self.assertEqual(ctx.exception.kind, "shot")
+            self.assertEqual(ctx.exception.identifier, "MISSING")
+            self.assertEqual(ctx.exception.candidates, (first, second))
+            self.assertIn(str(first), str(ctx.exception))
+            self.assertIn(str(second), str(ctx.exception))
 
 
 if __name__ == "__main__":
