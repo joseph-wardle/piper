@@ -98,6 +98,20 @@ class CLITests(unittest.TestCase):
             self.assertEqual(out.strip(), expected)
             self.assertEqual(err, "")
 
+    def test_path_output_is_machine_clean(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            env, workdir, show_root, _scripts_dir = self._build_test_layout(root)
+
+            expected = f"{show_root / 'production' / 'shot' / 'F_160'}\n"
+            code, out, err = self._invoke(
+                ["path", "shot", "F_160"], env=env, cwd=workdir
+            )
+
+            self.assertEqual(code, 0)
+            self.assertEqual(out, expected)
+            self.assertEqual(err, "")
+
     def test_run_executes_script_in_invocation_cwd(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -155,7 +169,16 @@ class CLITests(unittest.TestCase):
 
             code, out, err = self._invoke(["init", "bash"], env=env, cwd=workdir)
             self.assertEqual(code, 0)
+            self.assertIn("# piper shell integration (bash)", out)
             self.assertIn("command piper path", out)
+            self.assertIn("builtin cd --", out)
+            self.assertEqual(err, "")
+
+            code, out, err = self._invoke(["init", "zsh"], env=env, cwd=workdir)
+            self.assertEqual(code, 0)
+            self.assertIn("# piper shell integration (zsh)", out)
+            self.assertIn("command piper path", out)
+            self.assertIn("builtin cd --", out)
             self.assertEqual(err, "")
 
     def test_doctor_returns_non_zero_when_show_resolution_fails(self) -> None:
