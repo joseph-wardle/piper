@@ -1,20 +1,23 @@
 # /groups/bobo/pipeline/piper.toml
-# Show-level overrides and path candidates for bobo.
+# Show-level piper configuration.
 
 [scripts]
-# Show-shared scripts. If omitted, piper falls back to <project_root>/scripts.
+# Directory order matters. First match wins for `piper run <script>`.
+# Paths may be absolute or relative to this file's directory.
 dirs = [
   "/groups/bobo/pipeline/piper/scripts",
 ]
 
 [goto]
-# Canonical shot folders.
+# `{root}` is the resolved show root (for bobo: /groups/bobo)
+# `{id}` is the command identifier (for example F_160 or fence_door)
+
 shot = [
   "{root}/production/shot/{id}",
 ]
 
-# Assets can be split across categories and nested layout buckets.
-# Wildcards are expanded in deterministic sorted order.
+# Assets in bobo are distributed across multiple roots and nested categories. :(
+# Candidate order is deterministic: first existing path wins.
 asset = [
   "{root}/production/asset/{id}",
   "{root}/production/asset/*/{id}",
@@ -24,7 +27,6 @@ asset = [
   "{root}/production/character/{id}",
 ]
 
-# Environment/set level entries.
 environment = [
   "{root}/production/set/{id}",
   "{root}/production/asset/environment/{id}",

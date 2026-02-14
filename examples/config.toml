@@ -1,7 +1,17 @@
 # ~/.config/piper/config.toml
-# Global user-level piper configuration.
+# Global user-level configuration.
 
 default_show = "bobo"
 
 [shows]
+# show_name = absolute_show_root
 bobo = "/groups/bobo"
+
+# Optional user-level path defaults (overridden by show config).
+# [goto]
+# shot = "{root}/production/shot/{id}"
+
+# Optional user-level script dirs (overridden by show config/env).
+# Paths may be absolute or relative to this config file directory.
+# [scripts]
+# dirs = ["/groups/bobo/pipeline/piper/scripts"]
