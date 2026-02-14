@@ -1,0 +1,31 @@
+# /groups/bobo/pipeline/piper.toml
+# Show-level overrides and path candidates for bobo.
+
+[scripts]
+# Show-shared scripts. If omitted, piper falls back to <project_root>/scripts.
+dirs = [
+  "/groups/bobo/pipeline/piper/scripts",
+]
+
+[goto]
+# Canonical shot folders.
+shot = [
+  "{root}/production/shot/{id}",
+]
+
+# Assets can be split across categories and nested layout buckets.
+# Wildcards are expanded in deterministic sorted order.
+asset = [
+  "{root}/production/asset/{id}",
+  "{root}/production/asset/*/{id}",
+  "{root}/production/asset/*/*/{id}",
+  "{root}/production/assets/{id}",
+  "{root}/production/assets/*/{id}",
+  "{root}/production/character/{id}",
+]
+
+# Environment/set level entries.
+environment = [
+  "{root}/production/set/{id}",
+  "{root}/production/asset/environment/{id}",
+]

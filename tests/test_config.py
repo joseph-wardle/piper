@@ -144,6 +144,52 @@ class ConfigResolutionTests(unittest.TestCase):
             project_root = Path(__file__).resolve().parents[1]
             self.assertEqual(context.show.script_dirs, (project_root / "scripts",))
 
+    def test_show_config_keeps_array_templates(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            show_root = root / "groups" / "bobo"
+            show_root.mkdir(parents=True)
+
+            user_config_path = root / "config.toml"
+            self._write(
+                user_config_path,
+                f"""
+                default_show = "bobo"
+
+                [shows]
+                bobo = "{show_root}"
+                """,
+            )
+
+            show_config_path = show_root / "pipeline" / "piper.toml"
+            self._write(
+                show_config_path,
+                """
+                [goto]
+                asset = [
+                  "{root}/production/asset/{id}",
+                  "{root}/production/asset/*/{id}",
+                  "{root}/production/asset/*/*/{id}",
+                ]
+                """,
+            )
+
+            context = resolve_context(
+                None,
+                cwd=root,
+                environ={},
+                user_config_path=user_config_path,
+            )
+
+            self.assertEqual(
+                context.show.goto_templates["asset"],
+                (
+                    "{root}/production/asset/{id}",
+                    "{root}/production/asset/*/{id}",
+                    "{root}/production/asset/*/*/{id}",
+                ),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

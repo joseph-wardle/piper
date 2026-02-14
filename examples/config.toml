@@ -1,0 +1,7 @@
+# ~/.config/piper/config.toml
+# Global user-level piper configuration.
+
+default_show = "bobo"
+
+[shows]
+bobo = "/groups/bobo"

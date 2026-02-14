@@ -62,6 +62,38 @@ class PathResolverTests(unittest.TestCase):
             self.assertEqual(ctx.exception.identifier, "F_999")
             self.assertEqual(len(ctx.exception.candidates), 1)
 
+    def test_glob_template_resolves_nested_asset(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = (
+                root / "production" / "asset" / "environment" / "Forest" / "fence_door"
+            )
+            target.mkdir(parents=True)
+
+            show = self._make_show(
+                root,
+                {"asset": ("{root}/production/asset/environment/*/{id}",)},
+            )
+
+            resolved = resolve_existing_path(show, "asset", "fence_door")
+            self.assertEqual(resolved, target)
+
+    def test_glob_template_is_deterministic_with_multiple_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            first = root / "production" / "asset" / "rigged" / "bee"
+            second = root / "production" / "asset" / "test" / "bee"
+            first.mkdir(parents=True)
+            second.mkdir(parents=True)
+
+            show = self._make_show(
+                root,
+                {"asset": ("{root}/production/asset/*/{id}",)},
+            )
+
+            resolved = resolve_existing_path(show, "asset", "bee")
+            self.assertEqual(resolved, first)
+
 
 if __name__ == "__main__":
     unittest.main()
