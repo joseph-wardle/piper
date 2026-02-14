@@ -1,0 +1,23 @@
+[project]
+name = "piper"
+version = "0.1.0"
+description = "A CLI utility belt"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+piper = "piper:main"
+
+[build-system]
+requires = ["uv_build>=0.8.15,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.1",
+    "ty>=0.0.17",
+]
+
+[tool.ty.src]
+include = ["src", "tests"]
