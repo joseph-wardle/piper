@@ -1,6 +1,6 @@
 # piper
 
-`piper` is a lightweight CLI utility belt for film pipeline workflows.
+`piper` is a lightweight CLI utility belt for BYU's film pipeline.
 
 - architecture: `docs/architecture.md`
 
