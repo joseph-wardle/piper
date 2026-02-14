@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from piper.errors import PathResolutionError
+from piper.errors import ConfigError, PathResolutionError
 from piper.models import ShowConfig
 from piper.resolvers.paths import UnknownKindError, resolve_existing_path
 
@@ -93,6 +93,47 @@ class PathResolverTests(unittest.TestCase):
 
             resolved = resolve_existing_path(show, "asset", "bee")
             self.assertEqual(resolved, first)
+
+    def test_kind_is_dynamic_from_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / "production" / "sequence" / "A"
+            target.mkdir(parents=True)
+
+            show = self._make_show(
+                root,
+                {"sequence": ("{root}/production/sequence/{id}",)},
+            )
+
+            resolved = resolve_existing_path(show, "sequence", "A")
+            self.assertEqual(resolved, target)
+
+    def test_invalid_template_placeholder_raises_clear_config_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            show = self._make_show(
+                root,
+                {"shot": ("{root}/production/{unknown}/{id}",)},
+            )
+
+            with self.assertRaises(ConfigError) as ctx:
+                resolve_existing_path(show, "shot", "F_160")
+
+            self.assertIn("unknown placeholder", str(ctx.exception))
+
+    def test_missing_path_error_contains_attempted_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            show = self._make_show(
+                root,
+                {"shot": ("{root}/production/shot/{id}",)},
+            )
+
+            with self.assertRaises(PathResolutionError) as ctx:
+                resolve_existing_path(show, "shot", "MISSING")
+
+            expected = root / "production" / "shot" / "MISSING"
+            self.assertIn(str(expected), str(ctx.exception))
 
 
 if __name__ == "__main__":

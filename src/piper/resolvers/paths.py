@@ -3,7 +3,7 @@ from __future__ import annotations
 import glob
 from pathlib import Path
 
-from piper.errors import PathResolutionError, PiperError
+from piper.errors import ConfigError, PathResolutionError, PiperError
 from piper.models import ShowConfig
 
 
@@ -11,10 +11,24 @@ class UnknownKindError(PiperError):
     """Raised when an unknown path kind is requested."""
 
 
+def _render_template(template: str, *, show_root: Path, identifier: str) -> str:
+    try:
+        return template.format(root=str(show_root), id=identifier)
+    except KeyError as exc:
+        missing = exc.args[0]
+        raise ConfigError(
+            "invalid goto template "
+            f"'{template}': unknown placeholder '{missing}'. "
+            "Allowed placeholders are '{root}' and '{id}'."
+        ) from exc
+    except ValueError as exc:
+        raise ConfigError(f"invalid goto template '{template}': {exc}") from exc
+
+
 def _expand_template_paths(
     template: str, *, show_root: Path, identifier: str
 ) -> list[Path]:
-    rendered = template.format(root=str(show_root), id=identifier)
+    rendered = _render_template(template, show_root=show_root, identifier=identifier)
     rendered_path = Path(rendered).expanduser()
     if not rendered_path.is_absolute():
         rendered_path = show_root / rendered_path
@@ -24,7 +38,7 @@ def _expand_template_paths(
         return [rendered_path]
 
     # Expand wildcard candidates in deterministic order so resolution is stable.
-    matches = [Path(match).resolve() for match in sorted(glob.glob(rendered_text))]
+    matches = [Path(match) for match in sorted(glob.glob(rendered_text))]
     if matches:
         return matches
 
