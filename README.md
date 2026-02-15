@@ -99,20 +99,22 @@ piper run --list
 
 Local script name: `rm_wedge_report`
 
-Pass 1 scope:
+Current scope:
 
 - Parse wedge runs + per-frame RenderMan stats JSON
 - Aggregate performance, memory, and hotspot diagnostics
 - Produce heuristic recommendations for `dailies` and `final`
-- Generate a clean HTML report and machine-readable CSV/JSON outputs
-- No image-diff quality analysis yet (planned for pass 2)
+- Compare candidate EXRs against ground truth EXRs (RGB) with OIIO `--diff` metrics
+- Generate visual spotlight triptychs (ground truth, candidate, absolute diff)
+- Generate image-quality charts (scatter + heatmaps)
+- Write a clean HTML report and machine-readable CSV/JSON outputs
 
 Run it:
 
 ```bash
 piper run rm_wedge_report -- \
   --root /groups/bobo/production/shot/C_010/render/tests/2026-02-13_wedge \
-  --out /tmp/rm_wedge_report_pass1
+  --out /tmp/rm_wedge_report
 ```
 
 Key options:
@@ -120,6 +122,10 @@ Key options:
 - `--attempt-policy latest|first|max-mainloop` (default: `latest`)
 - `--include-group <name>` (repeatable)
 - `--exclude-group <name>` (repeatable)
+- `--images-subdir <name>` (default: `images_dn`)
+- `--ground-truth-group <name>` (default: `ground_truth`)
+- `--spotlight-limit <int>` (default: `6`)
+- `--disable-image-analysis`
 
 Outputs:
 
@@ -127,7 +133,14 @@ Outputs:
 - `<out>/data/frames.csv`
 - `<out>/data/runs.csv`
 - `<out>/data/recommendations.json`
+- `<out>/data/image_frames.csv` (when image analysis is enabled)
+- `<out>/data/image_runs.csv` (when image analysis is enabled)
 - `<out>/data/warnings.json`
+
+Image-analysis dependency:
+
+- `oiiotool` must be available on `PATH` for EXR comparisons and visual assets.
+- If `oiiotool` is unavailable, the script still writes the core stats report and adds a warning that image analysis was skipped.
 
 Behavior:
 

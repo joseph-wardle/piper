@@ -12,6 +12,7 @@ from .analysis import (
     summarize_runs,
 )
 from .discovery import discover_runs
+from .images import analyze_images
 from .report import write_outputs
 from .stats_extract import AttemptPolicy
 
@@ -19,8 +20,8 @@ from .stats_extract import AttemptPolicy
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Analyze RenderMan wedge stats and generate a clean HTML + CSV report. "
-            "Pass 1 focuses on core stats and recommendation heuristics."
+            "Analyze RenderMan wedge stats, compare EXRs against ground truth, "
+            "and generate an HTML + CSV report."
         )
     )
     parser.add_argument("--root", type=Path, required=True, help="Wedge root directory")
@@ -50,6 +51,27 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--quiet",
         action="store_true",
         help="Suppress non-error progress logs",
+    )
+    parser.add_argument(
+        "--images-subdir",
+        default="images_dn",
+        help="Image subdirectory inside each run for comparisons (default: images_dn)",
+    )
+    parser.add_argument(
+        "--ground-truth-group",
+        default="ground_truth",
+        help="Group name used as image comparison baseline (default: ground_truth)",
+    )
+    parser.add_argument(
+        "--spotlight-limit",
+        type=int,
+        default=6,
+        help="Maximum number of visual spotlight comparisons in the HTML report",
+    )
+    parser.add_argument(
+        "--disable-image-analysis",
+        action="store_true",
+        help="Skip EXR comparisons, visual spotlights, and image-based charts",
     )
 
     return parser.parse_args(argv)
@@ -100,11 +122,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_rows = summarize_runs(frame_rows)
     recommendations = build_recommendations(run_rows)
     hotspots = build_hotspot_overview(frame_rows)
+
+    image_result = None
+    if not args.disable_image_analysis:
+        image_result = analyze_images(
+            runs=list(discovery.runs),
+            frame_rows=frame_rows,
+            run_rows=run_rows,
+            recommendations=recommendations,
+            out_dir=args.out,
+            images_subdir=args.images_subdir,
+            ground_truth_group=args.ground_truth_group,
+            spotlight_limit=max(0, args.spotlight_limit),
+        )
+
     all_warnings = collect_data_warnings(
         discovery.warnings,
         extraction_warnings,
         frame_rows,
     )
+    if image_result is not None:
+        all_warnings.extend(image_result.warnings)
 
     write_outputs(
         out_dir=args.out,
@@ -112,6 +150,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         runs=run_rows,
         recommendations=recommendations,
         hotspot_overview=hotspots,
+        image_result=image_result,
         warnings=all_warnings,
     )
 
@@ -121,6 +160,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Frames analyzed: {len(frame_rows)}")
         print(f"Groups analyzed: {', '.join(selected_groups)}")
         print(f"Attempt policy: {typed_policy}")
+        if image_result is None:
+            print("Image analysis: disabled")
+        else:
+            print(f"Image comparisons: {len(image_result.frame_metrics)}")
+            print(f"Visual spotlights: {len(image_result.spotlights)}")
         print(f"Report: {(args.out / 'report.html')}")
 
     return 0

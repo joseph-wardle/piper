@@ -443,7 +443,7 @@ def build_recommendations(summaries: Iterable[RunSummary]) -> list[Recommendatio
             f"Pareto frontier size: {len(frontier)} of {len(group_runs)} runs.",
             (
                 "Quality proxy is derived from resolution_scale, pixel_variance, "
-                "and max_samples (no image-diff quality in pass 1)."
+                "and max_samples; see image sections for measured EXR diffs."
             ),
         )
 

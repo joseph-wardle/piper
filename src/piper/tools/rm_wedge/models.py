@@ -154,3 +154,67 @@ class HotspotSummary:
     hotspot: str
     median_share: float
     p90_share: float
+
+
+@dataclass(frozen=True, slots=True)
+class ImageFrameMetrics:
+    """Per-frame image comparison metrics against a ground-truth frame."""
+
+    settings: RunSettings
+    run_dir: Path
+    frame: int
+    candidate_image: Path
+    ground_truth_image: Path
+    resized_to_ground_truth: bool
+    mean_error: float
+    rms_error: float
+    peak_snr: float
+    max_error: float
+
+
+@dataclass(frozen=True, slots=True)
+class ImageRunSummary:
+    """Per-run aggregate image quality summary."""
+
+    settings: RunSettings
+    run_dir: Path
+    compared_frames: int
+    median_mean_error: float | None
+    median_rms_error: float | None
+    median_peak_snr: float | None
+    max_error: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class SpotlightComparison:
+    """Representative visual comparison for one run/frame."""
+
+    settings: RunSettings
+    run_dir: Path
+    frame: int
+    rms_error: float
+    peak_snr: float
+    mean_error: float
+    max_error: float
+    gt_png: str
+    candidate_png: str
+    diff_png: str
+
+
+@dataclass(frozen=True, slots=True)
+class ImageCharts:
+    """Chart assets generated from image/run comparison data."""
+
+    scatter_time_vs_rms: str | None
+    heatmaps: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ImageAnalysisResult:
+    """Top-level output of pass-2 image analysis and visualization."""
+
+    frame_metrics: tuple[ImageFrameMetrics, ...]
+    run_summaries: tuple[ImageRunSummary, ...]
+    charts: ImageCharts
+    spotlights: tuple[SpotlightComparison, ...]
+    warnings: tuple[str, ...]
