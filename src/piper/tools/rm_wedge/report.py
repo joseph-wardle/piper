@@ -392,8 +392,18 @@ def _spotlights_html(spotlights: list[SpotlightComparison]) -> str:
             "".join(
                 [
                     '<section class="card">',
-                    f"<h3>{html.escape(item.settings.run_name)} frame {item.frame:04d}</h3>",
+                    (
+                        f'<h3 class="spotlight-title">'
+                        f"{html.escape(item.settings.label())} "
+                        f"(frame {item.frame:04d})"
+                        "</h3>"
+                    ),
                     '<p class="muted">Worst compared frame for this run by RMS error.</p>',
+                    (
+                        '<p class="muted spotlight-run">'
+                        f"<code>{html.escape(item.settings.run_name)}</code>"
+                        "</p>"
+                    ),
                     "<ul>",
                     f"<li>RMS error: {item.rms_error:.5f}</li>",
                     f"<li>Mean error: {item.mean_error:.5f}</li>",
@@ -413,7 +423,7 @@ def _spotlights_html(spotlights: list[SpotlightComparison]) -> str:
             )
         )
 
-    return '<div class="card-grid">' + "".join(cards) + "</div>"
+    return '<div class="spotlight-grid">' + "".join(cards) + "</div>"
 
 
 def _image_charts_html(image_result: ImageAnalysisResult) -> str:
@@ -576,10 +586,20 @@ th { background: #f1f5fb; position: sticky; top: 0; }
 ul { margin-top: 0.3rem; }
 code { background: #eef2f7; padding: 0.1rem 0.3rem; border-radius: 4px; }
 .chart { width: 100%; height: auto; border: 1px solid #dbe1ea; border-radius: 8px; background: #fff; }
+.spotlight-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(860px, 1fr)); gap: 14px; }
+.spotlight-title { overflow-wrap: anywhere; margin-bottom: 0.2rem; }
+.spotlight-run { overflow-wrap: anywhere; }
+.spotlight-run code { white-space: normal; overflow-wrap: anywhere; }
 .triptych { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 figure { margin: 0; }
 figcaption { font-size: 12px; color: #5f6773; margin-bottom: 4px; }
 .triptych img { width: 100%; height: auto; border-radius: 8px; border: 1px solid #dbe1ea; background: #fff; }
+@media (max-width: 1100px) {
+  .spotlight-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  .triptych { grid-template-columns: 1fr; }
+}
 """
 
     html_doc = f"""<!doctype html>
