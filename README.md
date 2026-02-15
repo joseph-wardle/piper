@@ -95,6 +95,40 @@ piper run rm_generate_report -- --today
 piper run --list
 ```
 
+## Render Wedge Report Script
+
+Local script name: `rm_wedge_report`
+
+Pass 1 scope:
+
+- Parse wedge runs + per-frame RenderMan stats JSON
+- Aggregate performance, memory, and hotspot diagnostics
+- Produce heuristic recommendations for `dailies` and `final`
+- Generate a clean HTML report and machine-readable CSV/JSON outputs
+- No image-diff quality analysis yet (planned for pass 2)
+
+Run it:
+
+```bash
+piper run rm_wedge_report -- \
+  --root /groups/bobo/production/shot/C_010/render/tests/2026-02-13_wedge \
+  --out /tmp/rm_wedge_report_pass1
+```
+
+Key options:
+
+- `--attempt-policy latest|first|max-mainloop` (default: `latest`)
+- `--include-group <name>` (repeatable)
+- `--exclude-group <name>` (repeatable)
+
+Outputs:
+
+- `<out>/report.html`
+- `<out>/data/frames.csv`
+- `<out>/data/runs.csv`
+- `<out>/data/recommendations.json`
+- `<out>/data/warnings.json`
+
 Behavior:
 
 - `path` prints only the resolved path to stdout.
