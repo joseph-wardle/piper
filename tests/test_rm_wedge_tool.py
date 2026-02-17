@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+import math
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
 
+from piper.tools.rm_wedge.analysis import _apply_group_scores
 from piper.tools.rm_wedge.cli import main
 from piper.tools.rm_wedge.discovery import parse_run_settings
+from piper.tools.rm_wedge.models import RunSettings, RunSummary
 from piper.tools.rm_wedge.stats_extract import choose_attempt
 
 
@@ -299,6 +302,43 @@ class RenderWedgeToolTests(unittest.TestCase):
                 final_recommendation["selected"]["run_name"],
                 "final_resolution_scale_1p00_pixel_variance_0p005_max_samples_1024",
             )
+
+    def test_apply_group_scores_handles_zero_pixel_variance(self) -> None:
+        settings = RunSettings(
+            group="dailies",
+            resolution_scale=1.0,
+            pixel_variance=0.0,
+            max_samples=1024,
+            run_name="dailies_resolution_scale_1p00_pixel_variance_0p000_max_samples_1024",
+        )
+
+        summary = RunSummary(
+            settings=settings,
+            run_dir=Path("/tmp/dailies"),
+            frame_count=1,
+            usable_frames=1,
+            median_mainloop_s=10.0,
+            median_ttfp_s=5.0,
+            median_peak_mem_gib=4.0,
+            median_cpu_avg_pct=50.0,
+            median_rays_per_s=1_000.0,
+            median_share_trace_shadows=0.0,
+            median_share_shade_bxdf=0.0,
+            median_share_shade_opacity=0.0,
+            median_share_shade_groups=0.0,
+            median_share_shade_displacement=0.0,
+            median_share_geom_proto=0.0,
+            quality_proxy=0.0,
+            time_norm=0.0,
+            memory_norm=0.0,
+            objective_dailies=0.0,
+            objective_final=0.0,
+            warnings=(),
+        )
+
+        scored = _apply_group_scores([summary])
+        self.assertEqual(len(scored), 1)
+        self.assertTrue(math.isfinite(scored[0].quality_proxy))
 
 
 if __name__ == "__main__":

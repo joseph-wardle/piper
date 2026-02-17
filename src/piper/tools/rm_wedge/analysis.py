@@ -64,6 +64,15 @@ def _quantile(values: list[float], quantile: float) -> float:
     return ordered[left] * (1.0 - frac) + ordered[right] * frac
 
 
+_MIN_PIXEL_VARIANCE = 1e-6
+
+
+def _safe_pixel_variance(value: float) -> float:
+    if value > 0.0:
+        return value
+    return _MIN_PIXEL_VARIANCE
+
+
 def _pareto_frontier(runs: list[RunSummary]) -> list[RunSummary]:
     frontier: list[RunSummary] = []
 
@@ -307,7 +316,10 @@ def _apply_group_scores(summaries: list[RunSummary]) -> list[RunSummary]:
     for _group_name, group_runs in by_group.items():
         # Quality proxy components from settings.
         resolutions = [run.settings.resolution_scale for run in group_runs]
-        inv_variances = [1.0 / run.settings.pixel_variance for run in group_runs]
+        inv_variances = [
+            1.0 / _safe_pixel_variance(run.settings.pixel_variance)
+            for run in group_runs
+        ]
         sample_logs = [math.log2(run.settings.max_samples) for run in group_runs]
 
         res_lo, res_hi = min(resolutions), max(resolutions)
@@ -335,7 +347,7 @@ def _apply_group_scores(summaries: list[RunSummary]) -> list[RunSummary]:
                 run.settings.resolution_scale, res_lo, res_hi
             )
             quality_variance = _norm_high_better(
-                1.0 / run.settings.pixel_variance,
+                1.0 / _safe_pixel_variance(run.settings.pixel_variance),
                 inv_var_lo,
                 inv_var_hi,
             )
