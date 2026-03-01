@@ -24,8 +24,10 @@ from piper.paths import ProjectPaths
 # Filename of the warehouse database inside paths.warehouse_dir.
 WAREHOUSE_FILE = "telemetry.duckdb"
 
-# SQL migrations bundled with this package.
+# SQL directories bundled with this package.
 _SQL_DIR = Path(__file__).parent / "sql" / "schema"
+_SQL_SILVER_DIR = Path(__file__).parent / "sql" / "silver"
+_SQL_GOLD_DIR = Path(__file__).parent / "sql" / "gold"
 
 
 def open_warehouse(paths: ProjectPaths) -> duckdb.DuckDBPyConnection:
@@ -47,3 +49,23 @@ def run_migrations(conn: duckdb.DuckDBPyConnection) -> int:
     from piper.sql_runner import apply_pending_migrations
 
     return apply_pending_migrations(conn, _SQL_DIR)
+
+
+def run_silver_views(conn: duckdb.DuckDBPyConnection) -> None:
+    """(Re-)apply all silver domain view definitions.
+
+    Safe to call at any time: uses ``CREATE OR REPLACE VIEW``.
+    """
+    from piper.sql_runner import apply_views
+
+    apply_views(conn, _SQL_SILVER_DIR)
+
+
+def run_gold_views(conn: duckdb.DuckDBPyConnection) -> None:
+    """(Re-)apply all gold metric view definitions.
+
+    Safe to call at any time: uses ``CREATE OR REPLACE VIEW``.
+    """
+    from piper.sql_runner import apply_views
+
+    apply_views(conn, _SQL_GOLD_DIR)

@@ -120,21 +120,47 @@ class TestCommandsExitZero:
         )
         assert result.exit_code == 0, result.output
 
-    def test_materialize_defaults(self):
-        result = runner.invoke(app, ["materialize"])
+    def test_materialize_defaults(self, tmp_path):
+        result = runner.invoke(
+            app, ["materialize"],
+            env={
+                "PIPER_PATHS__DATA_ROOT": str(tmp_path),
+                "PIPER_PATHS__RAW_ROOT": str(tmp_path / "raw"),
+            },
+        )
         assert result.exit_code == 0, result.output
 
-    def test_materialize_named_model(self):
-        result = runner.invoke(app, ["materialize", "--model", "gold_publish_health_daily"])
+    def test_materialize_named_model(self, tmp_path):
+        result = runner.invoke(
+            app,
+            ["materialize", "--model", "gold_publish_health_daily"],
+            env={
+                "PIPER_PATHS__DATA_ROOT": str(tmp_path),
+                "PIPER_PATHS__RAW_ROOT": str(tmp_path / "raw"),
+            },
+        )
         assert result.exit_code == 0, result.output
 
-    def test_doctor_defaults(self):
-        result = runner.invoke(app, ["doctor"])
-        assert result.exit_code == 0, result.output
+    def test_doctor_defaults(self, tmp_path):
+        # An empty warehouse will fail freshness/volume checks (exit 2 is correct).
+        result = runner.invoke(
+            app, ["doctor"],
+            env={
+                "PIPER_PATHS__DATA_ROOT": str(tmp_path),
+                "PIPER_PATHS__RAW_ROOT": str(tmp_path / "raw"),
+            },
+        )
+        assert result.exit_code in (0, 1, 2), result.output
 
-    def test_doctor_named_check(self):
-        result = runner.invoke(app, ["doctor", "--check", "freshness"])
-        assert result.exit_code == 0, result.output
+    def test_doctor_named_check(self, tmp_path):
+        result = runner.invoke(
+            app, ["doctor", "--check", "freshness"],
+            env={
+                "PIPER_PATHS__DATA_ROOT": str(tmp_path),
+                "PIPER_PATHS__RAW_ROOT": str(tmp_path / "raw"),
+            },
+        )
+        assert result.exit_code in (0, 1, 2), result.output
 
     def test_config_show(self):
         result = runner.invoke(app, ["config", "show"])

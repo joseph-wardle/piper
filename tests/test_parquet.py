@@ -1,14 +1,18 @@
-"""Tests for the silver_events Parquet export."""
+"""Tests for the silver_events and silver domain Parquet exports."""
 
 from pathlib import Path
 
 import duckdb
 import pytest
 
-from piper.parquet import export_silver_events
-from piper.sql_runner import apply_pending_migrations
+from piper.discovery import FoundFile
+from piper.ingest import ingest_file
+from piper.parquet import export_silver_domain, export_silver_events
+from piper.sql_runner import apply_pending_migrations, apply_views
 
 _SQL_DIR = Path(__file__).parent.parent / "src" / "piper" / "sql" / "schema"
+_SQL_SILVER_DIR = Path(__file__).parent.parent / "src" / "piper" / "sql" / "silver"
+_FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +94,99 @@ class TestExportSilverEvents:
         ).fetchone()
         assert row is not None
         assert row[0] == 2
+
+
+# ---------------------------------------------------------------------------
+# export_silver_domain — shared fixture
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def domain_conn(tmp_path):
+    """In-memory DuckDB with all fixture data ingested and silver views applied."""
+    c = duckdb.connect(":memory:")
+    apply_pending_migrations(c, _SQL_DIR)
+    for fixture in sorted(_FIXTURE_DIR.glob("*.jsonl")):
+        ff = FoundFile(
+            path=fixture,
+            size=fixture.stat().st_size,
+            mtime=fixture.stat().st_mtime,
+        )
+        ingest_file(c, ff, quarantine_dir=tmp_path / "quarantine")
+    apply_views(c, _SQL_SILVER_DIR)
+    yield c
+    c.close()
+
+
+# ---------------------------------------------------------------------------
+# export_silver_domain — core behaviour
+# ---------------------------------------------------------------------------
+
+
+class TestExportSilverDomain:
+    _VIEWS = [
+        "silver_publish_usd",
+        "silver_tool_events",
+        "silver_tractor_job_spool",
+        "silver_tractor_farm_snapshot",
+        "silver_render_stats_summary",
+        "silver_storage_scan_summary",
+        "silver_storage_scan_bucket",
+    ]
+
+    def test_returns_dict_with_all_seven_views(self, domain_conn, tmp_path):
+        result = export_silver_domain(domain_conn, tmp_path / "silver")
+        assert set(result.keys()) == set(self._VIEWS)
+
+    def test_row_counts_are_positive(self, domain_conn, tmp_path):
+        result = export_silver_domain(domain_conn, tmp_path / "silver")
+        assert all(n > 0 for n in result.values())
+
+    def test_output_directories_created(self, domain_conn, tmp_path):
+        export_silver_domain(domain_conn, tmp_path / "silver")
+        for view in self._VIEWS:
+            assert (tmp_path / "silver" / view).is_dir()
+
+    def test_parquet_files_exist_in_each_dataset(self, domain_conn, tmp_path):
+        export_silver_domain(domain_conn, tmp_path / "silver")
+        for view in self._VIEWS:
+            files = list((tmp_path / "silver" / view).rglob("*.parquet"))
+            assert len(files) > 0, f"no Parquet files for {view}"
+
+    def test_partitioned_by_event_date(self, domain_conn, tmp_path):
+        export_silver_domain(domain_conn, tmp_path / "silver")
+        publish_dir = tmp_path / "silver" / "silver_publish_usd"
+        date_dirs = [d.name for d in publish_dir.iterdir() if d.is_dir()]
+        assert any(d.startswith("event_date=") for d in date_dirs)
+
+    def test_parquet_readable_by_duckdb(self, domain_conn, tmp_path):
+        result = export_silver_domain(domain_conn, tmp_path / "silver")
+        for view, expected_n in result.items():
+            out_dir = tmp_path / "silver" / view
+            row = domain_conn.execute(
+                f"SELECT COUNT(*) FROM read_parquet('{out_dir}/**/*.parquet')"
+            ).fetchone()
+            assert row is not None
+            assert row[0] == expected_n, f"{view}: expected {expected_n} rows in Parquet"
+
+    def test_empty_view_creates_directory_no_files(self, tmp_path):
+        """An empty domain view produces a directory but no Parquet files."""
+        c = duckdb.connect(":memory:")
+        apply_pending_migrations(c, _SQL_DIR)
+        apply_views(c, _SQL_SILVER_DIR)
+        result = export_silver_domain(c, tmp_path / "silver")
+        c.close()
+        assert all(n == 0 for n in result.values())
+        for view in self._VIEWS:
+            assert (tmp_path / "silver" / view).is_dir()
+
+    def test_idempotent_reexport(self, domain_conn, tmp_path):
+        silver_dir = tmp_path / "silver"
+        export_silver_domain(domain_conn, silver_dir)
+        files_1 = {str(f.relative_to(silver_dir)) for f in silver_dir.rglob("*.parquet")}
+        export_silver_domain(domain_conn, silver_dir)
+        files_2 = {str(f.relative_to(silver_dir)) for f in silver_dir.rglob("*.parquet")}
+        assert files_1 == files_2
 
 
 # ---------------------------------------------------------------------------
