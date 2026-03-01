@@ -56,16 +56,14 @@ class TestApplyPendingMigrations:
         apply_pending_migrations(mem_conn, _SQL_DIR)
         # SELECT * FROM information_schema.tables works in DuckDB.
         rows = mem_conn.execute(
-            "SELECT table_name FROM information_schema.tables "
-            "WHERE table_name = 'silver_events'"
+            "SELECT table_name FROM information_schema.tables WHERE table_name = 'silver_events'"
         ).fetchall()
         assert rows == [("silver_events",)]
 
     def test_ingest_manifest_table_created(self, mem_conn):
         apply_pending_migrations(mem_conn, _SQL_DIR)
         rows = mem_conn.execute(
-            "SELECT table_name FROM information_schema.tables "
-            "WHERE table_name = 'ingest_manifest'"
+            "SELECT table_name FROM information_schema.tables WHERE table_name = 'ingest_manifest'"
         ).fetchall()
         assert rows == [("ingest_manifest",)]
 
@@ -85,28 +83,45 @@ class TestSilverEventsSchema:
 
     def _columns(self, conn) -> set[str]:
         rows = conn.execute(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = 'silver_events'"
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'silver_events'"
         ).fetchall()
         return {row[0] for row in rows}
 
     def test_identity_columns_present(self, conn):
         cols = self._columns(conn)
-        for col in ("event_id", "schema_version", "event_type", "occurred_at_utc",
-                    "status", "ingested_at_utc"):
+        for col in (
+            "event_id",
+            "schema_version",
+            "event_type",
+            "occurred_at_utc",
+            "status",
+            "ingested_at_utc",
+        ):
             assert col in cols, f"missing column: {col}"
 
     def test_context_columns_present(self, conn):
         cols = self._columns(conn)
-        for col in ("pipeline_name", "pipeline_dcc",
-                    "host_hostname", "host_user", "host_os",
-                    "session_id", "action_id"):
+        for col in (
+            "pipeline_name",
+            "pipeline_dcc",
+            "host_hostname",
+            "host_user",
+            "host_os",
+            "session_id",
+            "action_id",
+        ):
             assert col in cols, f"missing column: {col}"
 
     def test_scope_columns_present(self, conn):
         cols = self._columns(conn)
-        for col in ("scope_show", "scope_sequence", "scope_shot",
-                    "scope_asset", "scope_department", "scope_task"):
+        for col in (
+            "scope_show",
+            "scope_sequence",
+            "scope_shot",
+            "scope_asset",
+            "scope_department",
+            "scope_task",
+        ):
             assert col in cols, f"missing column: {col}"
 
     def test_payload_and_metrics_columns_present(self, conn):
@@ -138,9 +153,7 @@ class TestOpenWarehouse:
         run_migrations(conn)
         tables = {
             row[0]
-            for row in conn.execute(
-                "SELECT table_name FROM information_schema.tables"
-            ).fetchall()
+            for row in conn.execute("SELECT table_name FROM information_schema.tables").fetchall()
         }
         conn.close()
         assert "silver_events" in tables
@@ -160,5 +173,5 @@ class TestOpenWarehouse:
         n_first = run_migrations(conn)
         n_second = run_migrations(conn)
         conn.close()
-        assert n_first == 1   # 001_init.sql applied
+        assert n_first == 1  # 001_init.sql applied
         assert n_second == 0  # nothing new

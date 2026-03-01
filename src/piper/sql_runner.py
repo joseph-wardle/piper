@@ -48,9 +48,7 @@ def apply_pending_migrations(
 
     for sql_file in pending:
         _execute_sql_file(conn, sql_file.read_text())
-        conn.execute(
-            "INSERT INTO schema_migrations (version) VALUES (?)", [sql_file.stem]
-        )
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?)", [sql_file.stem])
 
     return len(pending)
 
