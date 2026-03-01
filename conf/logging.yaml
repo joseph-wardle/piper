@@ -1,0 +1,35 @@
+# piper — structlog pipeline reference
+#
+# This file documents the logging processor chain configured in
+# src/piper/logging.py.  It is not read at runtime; it exists so that
+# the pipeline is visible alongside the other configuration files.
+#
+# Runtime values (level, format) come from conf/settings.toml [logging]
+# or the PIPER_LOGGING__* environment variables.
+#
+# To change logging behaviour, edit conf/settings.toml or set env vars:
+#   PIPER_LOGGING__LEVEL=DEBUG
+#   PIPER_LOGGING__FORMAT=text
+
+pipeline:
+  # Merge any vars bound with structlog.contextvars.bind_contextvars().
+  # This is how run_id (and future fields like command=) reach every event.
+  - structlog.contextvars.merge_contextvars
+
+  # Add the log level string: level="info" | "warning" | "error" …
+  - structlog.stdlib.add_log_level
+
+  # Add a UTC ISO 8601 timestamp: timestamp="2026-03-01T02:41:55Z"
+  - structlog.processors.TimeStamper(fmt="iso", utc=True)
+
+  # Final renderer — chosen at startup based on settings.logging.format:
+  - structlog.processors.JSONRenderer   # format=json  →  one JSON object per line
+  - structlog.dev.ConsoleRenderer       # format=text  →  coloured key=value pairs
+
+context:
+  # Fields bound for the entire duration of a run (added by configure_logging):
+  run_id: <8-char hex>   # e.g. "a3f7b29c" — unique per CLI invocation
+
+output:
+  # Logs are written to stderr so stdout stays clean for command output.
+  stream: stderr

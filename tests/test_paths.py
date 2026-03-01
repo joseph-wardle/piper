@@ -10,9 +10,7 @@ from piper.paths import ProjectPaths
 
 
 def _settings_with_data_root(tmp_path: Path) -> Settings:
-    return Settings(
-        paths={"raw_root": str(tmp_path / "raw"), "data_root": str(tmp_path)}
-    )
+    return Settings(paths={"raw_root": str(tmp_path / "raw"), "data_root": str(tmp_path)})
 
 
 class TestFromSettings:

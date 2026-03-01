@@ -33,10 +33,10 @@ class ProjectPaths:
 
     # Derived from data_root.
     warehouse_dir: Path  # DuckDB database files
-    silver_dir: Path     # partitioned Parquet datasets
-    state_dir: Path      # ingest manifest + lock files
-    quarantine_dir: Path # invalid_jsonl/<YYYY-MM-DD>/ subdirs created at runtime
-    run_logs_dir: Path   # <YYYY-MM-DD>/ subdirs created at runtime
+    silver_dir: Path  # partitioned Parquet datasets
+    state_dir: Path  # ingest manifest + lock files
+    quarantine_dir: Path  # invalid_jsonl/<YYYY-MM-DD>/ subdirs created at runtime
+    run_logs_dir: Path  # <YYYY-MM-DD>/ subdirs created at runtime
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "ProjectPaths":
