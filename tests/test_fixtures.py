@@ -14,7 +14,6 @@ import pytest
 from piper.validate import KNOWN_EVENT_TYPES, validate_envelope
 from tests.conftest import FIXTURE_DIR, load_fixture, make_event_id
 
-
 # ---------------------------------------------------------------------------
 # Fixture factory
 # ---------------------------------------------------------------------------
@@ -60,8 +59,16 @@ class TestLoadFixture:
         assert len(all_fixture_events) >= 50  # ~54 in the current fixture set
 
     def test_all_events_have_required_keys(self, all_fixture_events):
-        required = {"schema_version", "event_id", "event_type", "occurred_at_utc",
-                    "status", "pipeline", "host", "session"}
+        required = {
+            "schema_version",
+            "event_id",
+            "event_type",
+            "occurred_at_utc",
+            "status",
+            "pipeline",
+            "host",
+            "session",
+        }
         for ev in all_fixture_events:
             missing = required - ev.keys()
             assert not missing, f"Event {ev.get('event_id')} missing fields: {missing}"
@@ -136,9 +143,11 @@ class TestFixturesValidate:
     def test_background_collectors_have_no_dcc(self, fixture_events_by_type):
         """Farm, render, and storage collectors should omit pipeline.dcc."""
         background_types = {
-            "tractor.farm.snapshot", "tractor.job.spool",
+            "tractor.farm.snapshot",
+            "tractor.job.spool",
             "render.stats.summary",
-            "storage.scan.summary", "storage.scan.bucket",
+            "storage.scan.summary",
+            "storage.scan.bucket",
         }
         for event_type in background_types:
             for ev in fixture_events_by_type.get(event_type, []):

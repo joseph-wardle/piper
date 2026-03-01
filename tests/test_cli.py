@@ -11,10 +11,14 @@ runner = CliRunner()
 
 @pytest.fixture(autouse=True)
 def _reset_structlog():
-    """Isolate each test from structlog state left by configure_logging()."""
+    """Isolate each test from structlog state and settings cache."""
+    from piper.config import get_settings
+
+    get_settings.cache_clear()
     structlog.reset_defaults()
     structlog.contextvars.clear_contextvars()
     yield
+    get_settings.cache_clear()
     structlog.reset_defaults()
     structlog.contextvars.clear_contextvars()
 
@@ -48,8 +52,15 @@ class TestHelp:
 class TestCommandsExitZero:
     """Each stub must run without error and exit 0."""
 
-    def test_init(self):
-        result = runner.invoke(app, ["init"])
+    def test_init(self, tmp_path):
+        result = runner.invoke(
+            app,
+            ["init"],
+            env={
+                "PIPER_PATHS__DATA_ROOT": str(tmp_path),
+                "PIPER_PATHS__RAW_ROOT": str(tmp_path / "raw"),
+            },
+        )
         assert result.exit_code == 0, result.output
 
     def test_ingest_defaults(self):

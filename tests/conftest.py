@@ -1,9 +1,9 @@
 """Shared pytest helpers and fixtures for the piper test suite.
 
-  load_fixture(name)          — parse tests/fixtures/<name>.jsonl into event dicts
-  make_event_id(type, n)      — deterministic UUID for synthetic fixture events
-  all_fixture_events          — session fixture: every event from tests/fixtures/
-  fixture_events_by_type      — session fixture: event_type → [raw dict, …]
+load_fixture(name)          — parse tests/fixtures/<name>.jsonl into event dicts
+make_event_id(type, n)      — deterministic UUID for synthetic fixture events
+all_fixture_events          — session fixture: every event from tests/fixtures/
+fixture_events_by_type      — session fixture: event_type → [raw dict, …]
 """
 
 import json
@@ -44,11 +44,7 @@ def all_fixture_events() -> list[dict]:
     """All synthetic events from ``tests/fixtures/``, in filename-sorted order."""
     events = []
     for path in sorted(FIXTURE_DIR.glob("*.jsonl")):
-        events.extend(
-            json.loads(line)
-            for line in path.read_text().splitlines()
-            if line.strip()
-        )
+        events.extend(json.loads(line) for line in path.read_text().splitlines() if line.strip())
     return events
 
 
