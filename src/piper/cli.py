@@ -32,6 +32,11 @@ def _main(
     ),
 ) -> None:
     """Diagnostics dashboard for the sandwich USD production pipeline."""
+    # Eager options (--version) raise typer.Exit() before this body runs,
+    # so configure_logging() is only called for real subcommands.
+    from piper.logging import configure_logging
+
+    configure_logging()
 
 
 # ---------------------------------------------------------------------------
