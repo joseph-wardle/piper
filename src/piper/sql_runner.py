@@ -25,6 +25,11 @@ _BOOTSTRAP = """
 """
 
 
+def run_sql_file(conn: duckdb.DuckDBPyConnection, path: Path) -> None:
+    """Execute a single SQL file.  Convenience wrapper around ``_execute_sql_file``."""
+    _execute_sql_file(conn, path.read_text())
+
+
 def apply_views(
     conn: duckdb.DuckDBPyConnection,
     sql_dir: Path,

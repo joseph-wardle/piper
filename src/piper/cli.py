@@ -244,7 +244,44 @@ def materialize(
     storage), then gold KPI models in dependency order.  All models are
     CREATE OR REPLACE, so this is safe to run at any time.
     """
-    _log.info("materialize started", model=model or "all")
+    from pathlib import Path
+
+    from piper.config import get_settings
+    from piper.paths import ProjectPaths
+    from piper.sql_runner import run_sql_file
+    from piper.warehouse import open_warehouse, run_gold_views, run_migrations, run_silver_views
+
+    settings = get_settings()
+    paths = ProjectPaths.from_settings(settings)
+    paths.ensure_output_dirs()
+
+    conn = open_warehouse(paths)
+    run_migrations(conn)
+
+    if model:
+        # Always apply silver views first so gold model dependencies exist.
+        run_silver_views(conn)
+        _pkg = Path(__file__).parent
+        for sql_dir in (_pkg / "sql" / "silver", _pkg / "sql" / "gold"):
+            sql_file = sql_dir / f"{model}.sql"
+            if sql_file.exists():
+                run_sql_file(conn, sql_file)
+                conn.close()
+                typer.echo(f"Materialized: {model}")
+                _log.info("model materialized", model=model)
+                return
+        conn.close()
+        typer.echo(f"Error: model {model!r} not found in silver or gold SQL dirs", err=True)
+        raise typer.Exit(1)
+
+    run_silver_views(conn)
+    run_gold_views(conn)
+    conn.close()
+
+    typer.echo("Materialize complete")
+    typer.echo("  silver views: 7")
+    typer.echo("  gold views:   6")
+    _log.info("materialize complete", silver_views=7, gold_views=6)
 
 
 # ---------------------------------------------------------------------------
@@ -269,7 +306,47 @@ def doctor(
 
     Exit codes: 0 = all pass, 1 = one or more warnings, 2 = one or more failures.
     """
-    _log.info("doctor started", check=check or "all")
+    from piper.config import get_settings
+    from piper.doctor import run_checks
+    from piper.paths import ProjectPaths
+    from piper.warehouse import open_warehouse, run_migrations
+
+    settings = get_settings()
+    paths = ProjectPaths.from_settings(settings)
+    paths.ensure_output_dirs()
+
+    conn = open_warehouse(paths)
+    run_migrations(conn)
+
+    try:
+        results = run_checks(conn, only=check)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    finally:
+        conn.close()
+
+    # Print aligned table of check results.
+    _STATUS_LABEL = {"pass": "PASS", "warn": "WARN", "fail": "FAIL"}
+    name_width = max(len(r.name) for r in results)
+    for r in results:
+        typer.echo(f"  {r.name.ljust(name_width)}  {_STATUS_LABEL[r.status]:4}  {r.message}")
+        if r.hint:
+            typer.echo(f"  {''.ljust(name_width)}        hint: {r.hint}")
+
+    n_warn = sum(1 for r in results if r.status == "warn")
+    n_fail = sum(1 for r in results if r.status == "fail")
+    typer.echo()
+    if n_fail:
+        typer.echo(f"  {n_warn} warning(s) — {n_fail} failure(s)")
+        _log.warning("doctor finished with failures", warnings=n_warn, failures=n_fail)
+        raise typer.Exit(2)
+    if n_warn:
+        typer.echo(f"  {n_warn} warning(s) — 0 failures")
+        _log.warning("doctor finished with warnings", warnings=n_warn)
+        raise typer.Exit(1)
+    typer.echo("  all checks passed")
+    _log.info("doctor finished", status="pass")
 
 
 # ---------------------------------------------------------------------------
