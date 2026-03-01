@@ -22,7 +22,7 @@ def _version_callback(value: bool) -> None:
 
 @app.callback()
 def _main(
-    version: bool = typer.Option(  # noqa: FBT001
+    version: bool = typer.Option(
         False,
         "--version",
         "-V",

@@ -1,4 +1,4 @@
-# Python-generated files
+# Python
 __pycache__/
 *.py[oc]
 build/
@@ -8,3 +8,19 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment — never commit secrets or local path overrides
+.env
+
+# pre-commit cache
+.pre-commit-cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# piper data artifacts — these live on shared storage, not in the repo
+*.duckdb
+*.duckdb.wal
