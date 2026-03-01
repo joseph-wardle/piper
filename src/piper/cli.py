@@ -70,7 +70,23 @@ def init() -> None:
     quarantine, run_logs) and runs the DuckDB schema migration to the
     latest version.  Safe to re-run: migration is idempotent.
     """
-    _log.info("init started")
+    from piper.config import get_settings
+    from piper.paths import ProjectPaths
+    from piper.warehouse import open_warehouse, run_migrations
+
+    settings = get_settings()
+    paths = ProjectPaths.from_settings(settings)
+    paths.ensure_output_dirs()
+    _log.info("output directories ready", data_root=str(paths.data_root))
+
+    conn = open_warehouse(paths)
+    n = run_migrations(conn)
+    conn.close()
+
+    if n:
+        _log.info("schema migrations applied", count=n)
+    else:
+        _log.info("schema is up to date")
 
 
 # ---------------------------------------------------------------------------
