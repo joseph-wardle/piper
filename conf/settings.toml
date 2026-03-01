@@ -1,0 +1,39 @@
+# piper — default configuration
+#
+# All values here are baked-in defaults.  Override any key via an environment
+# variable named PIPER_<SECTION>_<KEY> (e.g. PIPER_PATHS_RAW_ROOT).
+# Point to an alternate config file with PIPER_CONFIG_FILE.
+
+[paths]
+# Shared .telemetry directory written by the pipeline on each artist machine.
+raw_root = "/groups/sandwich/05_production/.telemetry/raw"
+
+# Parent directory where piper writes all managed output:
+#   warehouse/   — DuckDB files
+#   silver/      — partitioned Parquet datasets
+#   state/       — ingest manifest DB
+#   quarantine/  — rejected JSONL lines
+#   run_logs/    — per-run log files
+data_root = "/groups/sandwich/05_production/.telemetry"
+
+[ingest]
+# Files modified within this window are skipped to avoid reading a file
+# mid-write while the pipeline spools across a rotation boundary.
+settle_seconds = 120
+
+# Maximum quarantine files retained per calendar day before the oldest
+# are pruned.  Prevents unbounded growth on a badly misconfigured producer.
+quarantine_max_per_day = 1000
+
+[logging]
+# INFO for production.  DEBUG adds per-line parse traces (very verbose).
+level = "INFO"
+
+# "json"  — one structured record per line; best for log aggregators.
+# "text"  — human-readable key=value pairs; easier for local troubleshooting.
+format = "json"
+
+[privacy]
+# Replace host_user with a stable SHA-256 prefix in gold SQL models.
+# Preserves per-user trend signals while removing PII from dashboard queries.
+mask_users = false
