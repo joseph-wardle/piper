@@ -27,7 +27,7 @@ class FoundFile(NamedTuple):
     """
 
     path: Path
-    size: int    # bytes (st_size from os.stat)
+    size: int  # bytes (st_size from os.stat)
     mtime: float  # Unix timestamp (st_mtime from os.stat)
 
 

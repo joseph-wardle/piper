@@ -81,10 +81,12 @@ class TestDiscoverSettledFiles:
 
     def test_real_pipeline_layout(self, tmp_path):
         """Files under <raw_root>/<host>/<user>/*.jsonl are discovered."""
-        _touch(tmp_path / "samus.cs.byu.edu" / "rees23" / "2026-02-15.jsonl",
-               mtime=_NOW - _SETTLE - 1)
-        _touch(tmp_path / "link.cs.byu.edu" / "wards49" / "2026-02-15.jsonl",
-               mtime=_NOW - _SETTLE - 1)
+        _touch(
+            tmp_path / "samus.cs.byu.edu" / "rees23" / "2026-02-15.jsonl", mtime=_NOW - _SETTLE - 1
+        )
+        _touch(
+            tmp_path / "link.cs.byu.edu" / "wards49" / "2026-02-15.jsonl", mtime=_NOW - _SETTLE - 1
+        )
         result = discover_settled_files(tmp_path, _SETTLE, now=_NOW)
         assert len(result) == 2
 
@@ -104,7 +106,7 @@ class TestSortOrder:
     def test_sorted_oldest_mtime_first(self, tmp_path):
         _touch(tmp_path / "c.jsonl", mtime=_NOW - _SETTLE - 10)  # oldest
         _touch(tmp_path / "a.jsonl", mtime=_NOW - _SETTLE - 5)
-        _touch(tmp_path / "b.jsonl", mtime=_NOW - _SETTLE - 1)   # newest-settled
+        _touch(tmp_path / "b.jsonl", mtime=_NOW - _SETTLE - 1)  # newest-settled
         result = discover_settled_files(tmp_path, _SETTLE, now=_NOW)
         assert [f.path.name for f in result] == ["c.jsonl", "a.jsonl", "b.jsonl"]
 
