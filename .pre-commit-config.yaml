@@ -1,0 +1,42 @@
+# pre-commit hook configuration
+#
+# Install hooks:  uv run pre-commit install
+# Run manually:   uv run pre-commit run --all-files
+#
+# All hooks use `language: system` and run via `uv run`, so they always use
+# the exact tool versions pinned in [dependency-groups].  No separate
+# pre-commit environments are built, and there is no version drift.
+
+repos:
+  - repo: local
+    hooks:
+      # Ruff lint — auto-fixes what it can, fails on remaining violations.
+      - id: ruff
+        name: ruff (lint)
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+
+      # Ruff format — enforces consistent style (covers trailing whitespace,
+      # end-of-file newlines, blank lines, etc.).
+      - id: ruff-format
+        name: ruff (format)
+        entry: uv run ruff format
+        language: system
+        types: [python]
+
+      # ty type checker — checks the whole src tree, not individual files.
+      - id: ty
+        name: ty
+        entry: uv run ty check src
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      # Catch accidental merge conflict markers left in source files.
+      - id: check-merge-conflict
+        name: check for merge conflict markers
+        entry: grep -rn "^<<<<<<< \|^=======$\|^>>>>>>> "
+        language: system
+        types: [text]
+        pass_filenames: false
