@@ -48,7 +48,7 @@ class ProjectPaths:
             warehouse_dir=data / "warehouse",
             silver_dir=data / "silver",
             state_dir=data / "state",
-            quarantine_dir=data / "quarantine" / "invalid_jsonl",
+            quarantine_dir=data / "quarantine",
             run_logs_dir=data / "run_logs",
         )
 
