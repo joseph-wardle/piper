@@ -23,7 +23,7 @@ class TestFromSettings:
         assert p.warehouse_dir == tmp_path / "warehouse"
         assert p.silver_dir == tmp_path / "silver"
         assert p.state_dir == tmp_path / "state"
-        assert p.quarantine_dir == tmp_path / "quarantine" / "invalid_jsonl"
+        assert p.quarantine_dir == tmp_path / "quarantine"
         assert p.run_logs_dir == tmp_path / "run_logs"
 
     def test_is_frozen(self, tmp_path):

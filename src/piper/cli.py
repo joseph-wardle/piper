@@ -114,7 +114,80 @@ def ingest(
     parses and validates each line, and upserts new events into
     silver_events.  Quarantines malformed or contract-invalid lines.
     """
-    _log.info("ingest started", dry_run=dry_run, limit=limit or "unlimited")
+    from piper.config import get_settings
+    from piper.discovery import FoundFile, discover_settled_files
+    from piper.ingest import IngestStats, ingest_file
+    from piper.lock import LockError, RunLock
+    from piper.manifest import is_already_ingested, mark_ingested
+    from piper.paths import ProjectPaths
+    from piper.warehouse import open_warehouse, run_migrations
+
+    settings = get_settings()
+    paths = ProjectPaths.from_settings(settings)
+    paths.ensure_output_dirs()
+
+    conn = open_warehouse(paths)
+    run_migrations(conn)
+
+    files = discover_settled_files(paths.raw_root, settings.ingest.settle_seconds)
+    _log.info("discovery complete", total=len(files))
+
+    pending: list[FoundFile] = []
+    results: list[IngestStats] = []
+
+    try:
+        with RunLock(paths.state_dir):
+            pending = [f for f in files if not is_already_ingested(conn, f)]
+            if limit:
+                pending = pending[:limit]
+
+            _log.info(
+                "ingest plan",
+                pending=len(pending),
+                already_ingested=len(files) - len(pending),
+                dry_run=dry_run,
+            )
+
+            if dry_run:
+                for file in pending:
+                    typer.echo(f"  {file.path}")
+            else:
+                for file in pending:
+                    stats = ingest_file(conn, file, quarantine_dir=paths.quarantine_dir)
+                    mark_ingested(
+                        conn,
+                        file,
+                        event_count=stats.accepted,
+                        error_count=stats.quarantined,
+                    )
+                    results.append(stats)
+                    _log.info(
+                        "file ingested",
+                        path=str(file.path),
+                        accepted=stats.accepted,
+                        duplicate=stats.duplicate,
+                        quarantined=stats.quarantined,
+                    )
+
+    except LockError as exc:
+        _log.error("piper already running", detail=str(exc))
+        raise typer.Exit(1) from exc
+
+    finally:
+        conn.close()
+
+    # Print run summary
+    n = len(pending)
+    if dry_run:
+        typer.echo(f"\nDry run — {n} file(s) would be ingested")
+    else:
+        accepted = sum(s.accepted for s in results)
+        duplicate = sum(s.duplicate for s in results)
+        quarantined = sum(s.quarantined for s in results)
+        typer.echo(f"\nIngest complete — {n} file(s) processed")
+        typer.echo(f"  rows accepted:      {accepted}")
+        typer.echo(f"  rows duplicate:     {duplicate}")
+        typer.echo(f"  lines quarantined:  {quarantined}")
 
 
 # ---------------------------------------------------------------------------
