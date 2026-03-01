@@ -178,3 +178,218 @@ class TestSilverToolEvents:
 
     def test_username_column_populated(self, conn):
         assert _count(conn, "silver_tool_events", "username IS NULL") == 0
+
+
+# ---------------------------------------------------------------------------
+# silver_tractor_job_spool
+# ---------------------------------------------------------------------------
+
+
+class TestSilverTractorJobSpool:
+    def test_row_count_matches_farm_fixture(self, conn):
+        """farm.jsonl has 3 tractor.job.spool events."""
+        assert _count(conn, "silver_tractor_job_spool") == 3
+
+    def test_job_title_always_populated(self, conn):
+        assert _count(conn, "silver_tractor_job_spool", "job_title IS NULL") == 0
+
+    def test_blade_count_always_populated(self, conn):
+        assert _count(conn, "silver_tractor_job_spool", "blade_count IS NULL") == 0
+
+    def test_priority_always_populated(self, conn):
+        assert _count(conn, "silver_tractor_job_spool", "priority IS NULL") == 0
+
+    def test_spool_duration_ms_populated_for_success(self, conn):
+        assert (
+            _count(
+                conn, "silver_tractor_job_spool", "status = 'success' AND spool_duration_ms IS NULL"
+            )
+            == 0
+        )
+
+    def test_spool_duration_ms_null_for_error(self, conn):
+        assert (
+            _count(
+                conn,
+                "silver_tractor_job_spool",
+                "status = 'error' AND spool_duration_ms IS NOT NULL",
+            )
+            == 0
+        )
+
+    def test_scope_fields_populated(self, conn):
+        # "show" is a DuckDB reserved word and must be double-quoted as an identifier
+        assert _count(conn, "silver_tractor_job_spool", '"show" IS NULL') == 0
+        assert _count(conn, "silver_tractor_job_spool", "sequence IS NULL") == 0
+        assert _count(conn, "silver_tractor_job_spool", "shot IS NULL") == 0
+
+
+# ---------------------------------------------------------------------------
+# silver_tractor_farm_snapshot
+# ---------------------------------------------------------------------------
+
+
+class TestSilverTractorFarmSnapshot:
+    def test_row_count_matches_farm_fixture(self, conn):
+        """farm.jsonl has 3 tractor.farm.snapshot events."""
+        assert _count(conn, "silver_tractor_farm_snapshot") == 3
+
+    def test_counter_fields_always_populated(self, conn):
+        """active_jobs, active_blades, errored_jobs present even on error rows."""
+        assert (
+            _count(
+                conn,
+                "silver_tractor_farm_snapshot",
+                "active_jobs IS NULL OR active_blades IS NULL OR errored_jobs IS NULL",
+            )
+            == 0
+        )
+
+    def test_snapshot_duration_ms_populated_for_success(self, conn):
+        assert (
+            _count(
+                conn,
+                "silver_tractor_farm_snapshot",
+                "status = 'success' AND snapshot_duration_ms IS NULL",
+            )
+            == 0
+        )
+
+    def test_snapshot_duration_ms_null_for_error(self, conn):
+        assert (
+            _count(
+                conn,
+                "silver_tractor_farm_snapshot",
+                "status = 'error' AND snapshot_duration_ms IS NOT NULL",
+            )
+            == 0
+        )
+
+
+# ---------------------------------------------------------------------------
+# silver_render_stats_summary
+# ---------------------------------------------------------------------------
+
+
+class TestSilverRenderStatsSummary:
+    def test_row_count_matches_render_fixture(self, conn):
+        """render.jsonl has 3 render.stats.summary events."""
+        assert _count(conn, "silver_render_stats_summary") == 3
+
+    def test_job_id_always_populated(self, conn):
+        assert _count(conn, "silver_render_stats_summary", "job_id IS NULL") == 0
+
+    def test_frame_counts_always_populated(self, conn):
+        assert (
+            _count(
+                conn,
+                "silver_render_stats_summary",
+                "frame_count IS NULL OR failed_frames IS NULL",
+            )
+            == 0
+        )
+
+    def test_metric_fields_always_populated(self, conn):
+        """render error rows carry zero metrics (not absent), so never NULL."""
+        assert (
+            _count(
+                conn,
+                "silver_render_stats_summary",
+                "avg_render_time_s IS NULL OR total_cpu_hours IS NULL OR peak_memory_gb IS NULL",
+            )
+            == 0
+        )
+
+    def test_scope_fields_populated(self, conn):
+        assert _count(conn, "silver_render_stats_summary", '"show" IS NULL') == 0
+        assert _count(conn, "silver_render_stats_summary", "sequence IS NULL") == 0
+        assert _count(conn, "silver_render_stats_summary", "shot IS NULL") == 0
+
+
+# ---------------------------------------------------------------------------
+# silver_storage_scan_summary
+# ---------------------------------------------------------------------------
+
+
+class TestSilverStorageScanSummary:
+    def test_row_count_matches_storage_fixture(self, conn):
+        """storage.jsonl has 3 storage.scan.summary events."""
+        assert _count(conn, "silver_storage_scan_summary") == 3
+
+    def test_bucket_count_always_populated(self, conn):
+        assert _count(conn, "silver_storage_scan_summary", "bucket_count IS NULL") == 0
+
+    def test_total_file_count_always_populated(self, conn):
+        assert _count(conn, "silver_storage_scan_summary", "total_file_count IS NULL") == 0
+
+    def test_size_and_duration_populated_for_success(self, conn):
+        assert (
+            _count(
+                conn,
+                "silver_storage_scan_summary",
+                "status = 'success' AND (total_size_bytes IS NULL OR scan_duration_s IS NULL)",
+            )
+            == 0
+        )
+
+    def test_size_and_duration_null_for_error(self, conn):
+        assert (
+            _count(
+                conn,
+                "silver_storage_scan_summary",
+                "status = 'error' AND (total_size_bytes IS NOT NULL OR scan_duration_s IS NOT NULL)",
+            )
+            == 0
+        )
+
+
+# ---------------------------------------------------------------------------
+# silver_storage_scan_bucket
+# ---------------------------------------------------------------------------
+
+
+class TestSilverStorageScanBucket:
+    def test_row_count_matches_storage_fixture(self, conn):
+        """storage.jsonl has 3 storage.scan.bucket events."""
+        assert _count(conn, "silver_storage_scan_bucket") == 3
+
+    def test_bucket_and_root_path_always_populated(self, conn):
+        assert (
+            _count(
+                conn,
+                "silver_storage_scan_bucket",
+                "bucket IS NULL OR root_path IS NULL",
+            )
+            == 0
+        )
+
+    def test_file_and_dir_count_always_populated(self, conn):
+        """file_count and dir_count are zero (not absent) on error rows."""
+        assert (
+            _count(
+                conn,
+                "silver_storage_scan_bucket",
+                "file_count IS NULL OR dir_count IS NULL",
+            )
+            == 0
+        )
+
+    def test_size_and_duration_populated_for_success(self, conn):
+        assert (
+            _count(
+                conn,
+                "silver_storage_scan_bucket",
+                "status = 'success' AND (total_size_bytes IS NULL OR scan_duration_s IS NULL)",
+            )
+            == 0
+        )
+
+    def test_size_and_duration_null_for_error(self, conn):
+        assert (
+            _count(
+                conn,
+                "silver_storage_scan_bucket",
+                "status = 'error' AND (total_size_bytes IS NOT NULL OR scan_duration_s IS NOT NULL)",
+            )
+            == 0
+        )
