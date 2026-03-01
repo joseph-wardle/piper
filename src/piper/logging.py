@@ -64,8 +64,11 @@ def configure_logging(settings: Settings | None = None) -> str:
         wrapper_class=structlog.make_filtering_bound_logger(level_int),
         context_class=dict,
         # Logs go to stderr; stdout is reserved for command output.
+        # cache_logger_on_first_use is intentionally False: caching captures a
+        # reference to sys.stderr at first-use time, which breaks CLI test
+        # runners that redirect stderr per-invocation.
         logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
-        cache_logger_on_first_use=True,
+        cache_logger_on_first_use=False,
     )
 
     run_id = uuid.uuid4().hex[:8]
