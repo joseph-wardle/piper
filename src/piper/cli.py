@@ -32,3 +32,33 @@ def _main(
     ),
 ) -> None:
     """Diagnostics dashboard for the sandwich USD production pipeline."""
+
+
+# ---------------------------------------------------------------------------
+# config subcommands
+# ---------------------------------------------------------------------------
+
+_config_app = typer.Typer(help="Inspect resolved configuration.")
+app.add_typer(_config_app, name="config")
+
+
+@_config_app.command("show")
+def config_show() -> None:
+    """Print the fully-resolved configuration and exit.
+
+    Shows which config file was loaded and the final value of every setting
+    after environment-variable overrides are applied.  Useful for confirming
+    that PIPER_* overrides are being picked up correctly.
+    """
+    from piper.config import _config_file, get_settings
+
+    settings = get_settings()
+
+    typer.echo(f"\n  config : {_config_file()}\n")
+
+    for section_name, section in settings.model_dump().items():
+        typer.echo(f"  [{section_name}]")
+        width = max(len(k) for k in section)
+        for key, val in section.items():
+            typer.echo(f"  {key.ljust(width)} = {val}")
+        typer.echo()
