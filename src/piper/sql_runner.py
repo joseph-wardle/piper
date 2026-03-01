@@ -25,6 +25,23 @@ _BOOTSTRAP = """
 """
 
 
+def apply_views(
+    conn: duckdb.DuckDBPyConnection,
+    sql_dir: Path,
+) -> None:
+    """Execute every ``*.sql`` file in ``sql_dir``, in filename order.
+
+    Intended for ``CREATE OR REPLACE VIEW`` statements, which are always
+    re-executed so views stay current without a version-tracking table.
+
+    Args:
+        conn:    Open DuckDB connection.
+        sql_dir: Directory containing view definition SQL files.
+    """
+    for sql_file in sorted(sql_dir.glob("*.sql")):
+        _execute_sql_file(conn, sql_file.read_text())
+
+
 def apply_pending_migrations(
     conn: duckdb.DuckDBPyConnection,
     sql_dir: Path,
@@ -63,8 +80,13 @@ def _applied_versions(conn: duckdb.DuckDBPyConnection) -> set[str]:
 
 
 def _execute_sql_file(conn: duckdb.DuckDBPyConnection, sql: str) -> None:
-    """Execute a SQL file containing one or more semicolon-terminated statements."""
-    for stmt in sql.split(";"):
+    """Execute a SQL file containing one or more semicolon-terminated statements.
+
+    Line comments (``--``) are stripped first so that semicolons inside
+    comments do not create spurious empty statements.
+    """
+    stripped = "\n".join(ln for ln in sql.splitlines() if not ln.strip().startswith("--"))
+    for stmt in stripped.split(";"):
         stmt = stmt.strip()
         if stmt:
             conn.execute(stmt)
