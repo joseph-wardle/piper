@@ -136,4 +136,3 @@ class TestFoundFile:
         _touch(p, mtime=expected_mtime)
         result = discover_settled_files(tmp_path, _SETTLE, now=_NOW)
         assert result[0].mtime == expected_mtime
-

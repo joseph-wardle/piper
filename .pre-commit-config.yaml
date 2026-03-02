@@ -17,11 +17,11 @@ repos:
         language: system
         types: [python]
 
-      # Ruff format — enforces consistent style (covers trailing whitespace,
-      # end-of-file newlines, blank lines, etc.).
+      # Ruff format — fails if any file would be reformatted; run
+      # `uv run ruff format` to fix and re-stage before committing.
       - id: ruff-format
         name: ruff (format)
-        entry: uv run ruff format
+        entry: uv run ruff format --check
         language: system
         types: [python]
 

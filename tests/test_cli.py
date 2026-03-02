@@ -111,10 +111,13 @@ class TestCommandSmoke:
 
 
 class TestBackfillRequiredOptions:
-    @pytest.mark.parametrize("args", [
-        ["backfill", "--end", "2026-03-01"],    # missing --start
-        ["backfill", "--start", "2026-01-01"],  # missing --end
-    ])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["backfill", "--end", "2026-03-01"],  # missing --start
+            ["backfill", "--start", "2026-01-01"],  # missing --end
+        ],
+    )
     def test_missing_required_option_fails(self, args):
         assert runner.invoke(app, args).exit_code != 0
 
