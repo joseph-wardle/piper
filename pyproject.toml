@@ -1,6 +1,6 @@
 [project]
 name = "piper"
-version = "0.1.0"
+version = "1.0.0"
 description = "Diagnostics dashboard for the sandwich USD production pipeline"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -10,6 +10,7 @@ dependencies = [
     "pyarrow>=18.0",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
+    "pyyaml>=6.0",
     "structlog>=25.0",
     "typer>=0.15",
 ]

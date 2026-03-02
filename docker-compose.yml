@@ -1,0 +1,31 @@
+# Piper — Grafana visualisation stack
+#
+# Usage:
+#   docker compose up -d
+#
+# The DuckDB warehouse is mounted read-only so Grafana never writes to it.
+# Set PIPER_DATA_ROOT to override the default telemetry root, e.g.:
+#   PIPER_DATA_ROOT=/tmp/piper_dev docker compose up -d
+#
+# Default credentials: admin / piper  (change via GF_SECURITY_ADMIN_PASSWORD)
+
+services:
+  grafana:
+    image: grafana/grafana:10.4.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_INSTALL_PLUGINS: "fr-ser-duckdb-datasource"
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: piper
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/data_quality.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ${PIPER_DATA_ROOT:-/groups/sandwich/05_production/.telemetry}/warehouse/telemetry.duckdb:/var/piper/telemetry.duckdb:ro
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+
+volumes:
+  grafana_data:

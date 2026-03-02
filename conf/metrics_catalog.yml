@@ -1,0 +1,166 @@
+# Piper metrics catalog — every gold metric available in Grafana.
+#
+# Fields
+# ------
+# name        Unique identifier used in dashboard panels and alerting rules.
+# owner       Team responsible for this metric's definition and quality.
+# model       Gold SQL view that produces this metric (sql/gold/<model>.sql).
+# column      Column within that view containing the metric value.
+# description Plain-English explanation of what the metric measures.
+# refresh     How often the upstream cron job refreshes this metric.
+
+metrics:
+
+  # ---------------------------------------------------------------------------
+  # gold_publish_health_daily
+  # ---------------------------------------------------------------------------
+
+  - name: publish_success_rate_pct
+    owner: pipeline
+    model: gold_publish_health_daily
+    column: success_rate_pct
+    description: >
+      Percentage of USD publish jobs that completed without error,
+      grouped by show / sequence / event_type per day.
+    refresh: daily
+
+  - name: avg_publish_duration_ms
+    owner: pipeline
+    model: gold_publish_health_daily
+    column: avg_duration_ms
+    description: >
+      Average wall-clock duration of successful USD publish operations
+      in milliseconds, grouped by show / sequence / event_type per day.
+    refresh: daily
+
+  - name: total_publish_output_bytes
+    owner: pipeline
+    model: gold_publish_health_daily
+    column: total_output_bytes
+    description: >
+      Total bytes written by successful USD publishes per day,
+      useful for tracking asset-storage growth rate.
+    refresh: daily
+
+  # ---------------------------------------------------------------------------
+  # gold_render_health_daily
+  # ---------------------------------------------------------------------------
+
+  - name: render_success_rate_pct
+    owner: pipeline
+    model: gold_render_health_daily
+    column: success_rate_pct
+    description: >
+      Percentage of Tractor render jobs that completed without any
+      failed frames, grouped by show / sequence per day.
+    refresh: daily
+
+  - name: total_cpu_hours
+    owner: pipeline
+    model: gold_render_health_daily
+    column: total_cpu_hours
+    description: >
+      Total CPU-hours consumed by render jobs per day.
+      Used for capacity planning and cost tracking.
+    refresh: daily
+
+  - name: total_failed_frames
+    owner: pipeline
+    model: gold_render_health_daily
+    column: total_failed_frames
+    description: >
+      Total number of frames that failed to render per day.
+      A sudden spike indicates blade instability or scene errors.
+    refresh: daily
+
+  # ---------------------------------------------------------------------------
+  # gold_farm_pressure_daily
+  # ---------------------------------------------------------------------------
+
+  - name: peak_active_blades
+    owner: pipeline
+    model: gold_farm_pressure_daily
+    column: peak_active_blades
+    description: >
+      Maximum number of active render blades observed across all
+      successful farm health snapshots in a given day.
+    refresh: daily
+
+  - name: peak_errored_jobs
+    owner: pipeline
+    model: gold_farm_pressure_daily
+    column: peak_errored_jobs
+    description: >
+      Maximum number of errored Tractor jobs observed in a single
+      farm snapshot per day.  Sustained non-zero values indicate
+      systemic farm problems.
+    refresh: daily
+
+  # ---------------------------------------------------------------------------
+  # gold_tool_reliability_daily
+  # ---------------------------------------------------------------------------
+
+  - name: tool_success_rate_pct
+    owner: pipeline
+    model: gold_tool_reliability_daily
+    column: success_rate_pct
+    description: >
+      Percentage of DCC tool invocations that completed successfully,
+      grouped by event_type per day.  Low values flag broken tools
+      or misconfigured environments.
+    refresh: daily
+
+  - name: avg_tool_duration_ms
+    owner: pipeline
+    model: gold_tool_reliability_daily
+    column: avg_duration_ms
+    description: >
+      Average duration of successful DCC tool invocations in
+      milliseconds per day.  Rising values can indicate performance
+      regressions or slow NFS mounts.
+    refresh: daily
+
+  # ---------------------------------------------------------------------------
+  # gold_storage_growth_weekly
+  # ---------------------------------------------------------------------------
+
+  - name: latest_storage_size_bytes
+    owner: pipeline
+    model: gold_storage_growth_weekly
+    column: latest_size_bytes
+    description: >
+      Latest observed total size of each storage bucket per week,
+      as reported by the most recent successful scan.
+    refresh: weekly
+
+  - name: latest_file_count
+    owner: pipeline
+    model: gold_storage_growth_weekly
+    column: latest_file_count
+    description: >
+      Latest observed file count in each storage bucket per week.
+      Week-over-week growth flags runaway temp-file accumulation.
+    refresh: weekly
+
+  # ---------------------------------------------------------------------------
+  # gold_data_quality_daily
+  # ---------------------------------------------------------------------------
+
+  - name: daily_error_rate_pct
+    owner: pipeline
+    model: gold_data_quality_daily
+    column: error_rate_pct
+    description: >
+      Percentage of all telemetry events with status=error per day,
+      across all domains.  A rising rate suggests a broken pipeline
+      stage or misconfigured tool.
+    refresh: daily
+
+  - name: daily_active_users
+    owner: pipeline
+    model: gold_data_quality_daily
+    column: active_users
+    description: >
+      Number of distinct pipeline users who generated at least one
+      telemetry event per day.  Useful for adoption and seat tracking.
+    refresh: daily

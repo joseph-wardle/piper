@@ -1,0 +1,20 @@
+# Grafana datasource — Piper DuckDB warehouse (read-only)
+#
+# Plugin: fr-ser-duckdb-datasource
+# Install: set GF_INSTALL_PLUGINS=fr-ser-duckdb-datasource in docker-compose.yml
+#
+# The database file is mounted into the container at /var/piper/telemetry.duckdb
+# via docker-compose.yml.  Do not change the path here without updating the
+# volume mount in docker-compose.yml.
+
+apiVersion: 1
+
+datasources:
+  - name: Piper DuckDB
+    type: fr-ser-duckdb-datasource
+    uid: piper_duckdb
+    access: proxy
+    isDefault: true
+    editable: false
+    jsonData:
+      path: /var/piper/telemetry.duckdb

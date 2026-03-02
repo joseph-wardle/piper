@@ -1,0 +1,49 @@
+{
+  "uid": "piper-render-health",
+  "title": "Render Health",
+  "description": "Daily Tractor render job success rate, CPU consumption, and failed frames (gold_render_health_daily).",
+  "tags": ["piper", "render"],
+  "schemaVersion": 38,
+  "version": 1,
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": {},
+  "refresh": "1h",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Render Success Rate (%)",
+      "description": "Daily average render job success rate across all shows and sequences.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "fr-ser-duckdb-datasource", "uid": "piper_duckdb" },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT event_date::TIMESTAMP AS time, ROUND(AVG(success_rate_pct), 2) AS \"Success Rate %\" FROM gold_render_health_daily GROUP BY event_date ORDER BY event_date"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Total CPU Hours",
+      "description": "Daily total CPU-hours consumed by all render jobs.  Use for capacity planning and cost tracking.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "fr-ser-duckdb-datasource", "uid": "piper_duckdb" },
+      "fieldConfig": {
+        "defaults": { "unit": "h" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT event_date::TIMESTAMP AS time, ROUND(SUM(total_cpu_hours), 4) AS \"CPU Hours\" FROM gold_render_health_daily GROUP BY event_date ORDER BY event_date"
+        }
+      ]
+    }
+  ]
+}

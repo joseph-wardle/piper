@@ -1,0 +1,49 @@
+{
+  "uid": "piper-farm-pressure",
+  "title": "Farm Pressure",
+  "description": "Daily peak blade utilisation and errored job counts from Tractor farm snapshots (gold_farm_pressure_daily).",
+  "tags": ["piper", "farm"],
+  "schemaVersion": 38,
+  "version": 1,
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": {},
+  "refresh": "1h",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Peak Active Blades",
+      "description": "Maximum number of active render blades observed across all farm snapshots each day.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "fr-ser-duckdb-datasource", "uid": "piper_duckdb" },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT event_date::TIMESTAMP AS time, peak_active_blades AS \"Peak Active Blades\" FROM gold_farm_pressure_daily ORDER BY event_date"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Peak Errored Jobs",
+      "description": "Maximum errored Tractor jobs in a single snapshot per day.  Sustained non-zero values indicate systemic farm problems.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "fr-ser-duckdb-datasource", "uid": "piper_duckdb" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "thresholds": { "steps": [{"color": "green", "value": 0}, {"color": "yellow", "value": 1}, {"color": "red", "value": 10}] } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT event_date::TIMESTAMP AS time, peak_errored_jobs AS \"Peak Errored Jobs\" FROM gold_farm_pressure_daily ORDER BY event_date"
+        }
+      ]
+    }
+  ]
+}
