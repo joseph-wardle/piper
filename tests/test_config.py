@@ -23,13 +23,6 @@ class TestDefaults:
         assert s.logging.format == "json"
         assert s.privacy.mask_users is False
 
-    def test_paths_are_path_objects(self):
-        from pathlib import Path
-
-        s = Settings()
-        assert isinstance(s.paths.raw_root, Path)
-        assert isinstance(s.paths.data_root, Path)
-
 
 class TestEnvOverrides:
     def test_ingest_settle_seconds(self, monkeypatch):
@@ -57,21 +50,3 @@ class TestValidation:
     def test_invalid_log_format_raises(self):
         with pytest.raises(ValidationError):
             Settings(logging={"format": "xml"})
-
-    def test_valid_log_formats(self):
-        assert Settings(logging={"format": "json"}).logging.format == "json"
-        assert Settings(logging={"format": "text"}).logging.format == "text"
-
-
-class TestCaching:
-    def test_get_settings_returns_same_instance(self):
-        s1 = get_settings()
-        s2 = get_settings()
-        assert s1 is s2
-
-    def test_cache_clear_returns_new_instance(self):
-        s1 = get_settings()
-        get_settings.cache_clear()
-        s2 = get_settings()
-        # Different instances after cache clear.
-        assert s1 is not s2

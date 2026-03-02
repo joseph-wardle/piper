@@ -59,8 +59,7 @@ class RunLock:
             existing_pid = self._read_pid()
             if existing_pid is not None and _is_alive(existing_pid):
                 raise LockError(
-                    f"piper is already running (PID {existing_pid}).  "
-                    f"Lock file: {self._lock_path}"
+                    f"piper is already running (PID {existing_pid}).  Lock file: {self._lock_path}"
                 ) from None
             # Stale lock from a dead process — overwrite with our PID.
             self._lock_path.write_text(str(self._pid))
