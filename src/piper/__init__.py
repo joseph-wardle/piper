@@ -7,4 +7,4 @@ from DuckDB.
 Pipeline contract: schema_version=1.0, 18 stable event types.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"

@@ -1,0 +1,16 @@
+# Grafana dashboard provider — loads all JSON files from this directory.
+#
+# updateIntervalSeconds: Grafana polls for dashboard changes every 30 s,
+# so new or edited JSON files are picked up without a container restart.
+
+apiVersion: 1
+
+providers:
+  - name: Piper
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

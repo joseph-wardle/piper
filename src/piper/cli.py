@@ -377,3 +377,50 @@ def config_show() -> None:
         for key, val in section.items():
             typer.echo(f"  {key.ljust(width)} = {val}")
         typer.echo()
+
+
+# ---------------------------------------------------------------------------
+# catalog subcommands
+# ---------------------------------------------------------------------------
+
+_catalog_app = typer.Typer(help="Browse the metrics catalog.")
+app.add_typer(_catalog_app, name="catalog")
+
+
+@_catalog_app.command("list")
+def catalog_list(
+    model: str = typer.Option(
+        "",
+        "--model",
+        "-m",
+        help="Filter by gold model name.  Empty = all models.",
+    ),
+) -> None:
+    """List every metric in the catalog with its model, column, and refresh cadence.
+
+    Each row maps a metric name to the gold SQL view and column that produces
+    it.  Use ``--model`` to narrow output to a single gold model.
+    """
+    from piper.catalog import get_catalog
+
+    entries = get_catalog()
+    if model:
+        entries = [e for e in entries if e.model == model]
+
+    if not entries:
+        typer.echo("No metrics found." + (f"  (model: {model!r})" if model else ""))
+        return
+
+    name_w = max(len(e.name) for e in entries)
+    model_w = max(len(e.model) for e in entries)
+    col_w = max(len(e.column) for e in entries)
+
+    header = f"  {'name'.ljust(name_w)}  {'model'.ljust(model_w)}  {'column'.ljust(col_w)}  refresh"
+    typer.echo(header)
+    typer.echo("  " + "-" * (len(header) - 2))
+
+    for e in entries:
+        typer.echo(
+            f"  {e.name.ljust(name_w)}  {e.model.ljust(model_w)}"
+            f"  {e.column.ljust(col_w)}  {e.refresh}"
+        )
