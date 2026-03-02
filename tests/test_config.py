@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from piper.config import Settings, get_settings
+from piper.config import LoggingSettings, Settings, get_settings
 
 
 @pytest.fixture(autouse=True)
@@ -45,8 +45,8 @@ class TestEnvOverrides:
 class TestValidation:
     def test_invalid_log_level_raises(self):
         with pytest.raises(ValidationError, match="level must be one of"):
-            Settings(logging={"level": "NONSENSE"})
+            Settings(logging=LoggingSettings(level="NONSENSE"))
 
     def test_invalid_log_format_raises(self):
         with pytest.raises(ValidationError):
-            Settings(logging={"format": "xml"})
+            Settings.model_validate({"logging": {"format": "xml"}})

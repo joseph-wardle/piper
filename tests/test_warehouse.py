@@ -10,7 +10,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from piper.config import Settings
+from piper.config import PathsSettings, Settings
 from piper.paths import ProjectPaths
 from piper.sql_runner import apply_pending_migrations
 from piper.warehouse import WAREHOUSE_FILE, open_warehouse, run_migrations
@@ -20,7 +20,7 @@ _SQL_DIR = Path(__file__).parent.parent / "src" / "piper" / "sql" / "schema"
 
 
 def _paths(tmp_path: Path) -> ProjectPaths:
-    s = Settings(paths={"raw_root": str(tmp_path / "raw"), "data_root": str(tmp_path)})
+    s = Settings(paths=PathsSettings(raw_root=tmp_path / "raw", data_root=tmp_path))
     p = ProjectPaths.from_settings(s)
     p.ensure_output_dirs()
     return p

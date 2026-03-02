@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from piper.config import Settings
+from piper.config import PathsSettings, Settings
 from piper.paths import ProjectPaths
 
 
 def _settings_with_data_root(tmp_path: Path) -> Settings:
-    return Settings(paths={"raw_root": str(tmp_path / "raw"), "data_root": str(tmp_path)})
+    return Settings(paths=PathsSettings(raw_root=tmp_path / "raw", data_root=tmp_path))
 
 
 class TestFromSettings:

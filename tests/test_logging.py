@@ -2,12 +2,12 @@
 
 import structlog
 
-from piper.config import Settings
+from piper.config import LoggingSettings, Settings
 from piper.logging import configure_logging, get_logger
 
 
 def _settings(**kw) -> Settings:
-    return Settings(logging=kw)
+    return Settings(logging=LoggingSettings(**kw))
 
 
 class TestConfigureLogging:
