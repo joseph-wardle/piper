@@ -15,7 +15,7 @@
       "description": "Latest observed total storage size for each bucket per week.  Week-over-week growth highlights fast-growing areas.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
-      "datasource": { "type": "fr-ser-duckdb-datasource", "uid": "piper_duckdb" },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "piper_duckdb" },
       "fieldConfig": {
         "defaults": { "unit": "bytes" },
         "overrides": []
@@ -33,7 +33,7 @@
       "description": "Latest observed file count in each storage bucket per week.  A sudden jump flags runaway temp-file accumulation.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
-      "datasource": { "type": "fr-ser-duckdb-datasource", "uid": "piper_duckdb" },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "piper_duckdb" },
       "fieldConfig": {
         "defaults": { "unit": "short" },
         "overrides": []

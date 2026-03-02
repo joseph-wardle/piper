@@ -63,10 +63,13 @@ uv run piper backfill --start 2026-01-01 --end 2026-01-31
 
 ## Grafana
 
-Start the dashboard stack with Docker Compose:
+The dashboard stack uses the [motherduck-duckdb-datasource](https://github.com/motherduckdb/grafana-duckdb-datasource)
+plugin to query DuckDB directly. It is unsigned (not in the Grafana catalog),
+so it must be downloaded once before starting the stack:
 
 ```bash
-docker compose up -d
+scripts/setup_grafana_plugin.sh   # one-time download (~400MB)
+podman compose up -d
 ```
 
 Grafana is available at <http://localhost:3000> (user: `admin`, pass: `piper`).
@@ -79,8 +82,11 @@ from `grafana/provisioning/`. The warehouse is mounted read-only at
 To point at a non-default warehouse location:
 
 ```bash
-PIPER_DATA_ROOT=/path/to/.telemetry docker compose up -d
+PIPER_DATA_ROOT=/path/to/.telemetry podman compose up -d
 ```
+
+> **Note:** `grafana/plugins/` is gitignored. Anyone cloning the repo must
+> run `scripts/setup_grafana_plugin.sh` before starting Grafana.
 
 ---
 
@@ -126,7 +132,7 @@ uv sync              # install all deps including dev group
 uv run pytest        # test suite (346 tests)
 uv run ruff check    # lint
 uv run ruff format   # format
-uv run ty check src  # type check
+uv run ty check      # type check
 ```
 
 CI runs the same four steps on every push and PR to `main`

@@ -24,3 +24,6 @@ wheels/
 # piper data artifacts — these live on shared storage, not in the repo
 *.duckdb
 *.duckdb.wal
+
+# Grafana plugin binaries — download with scripts/setup_grafana_plugin.sh
+grafana/plugins/
