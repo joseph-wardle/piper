@@ -11,9 +11,9 @@ SELECT
     status,
     host_hostname                                               AS hostname,
     host_user                                                   AS username,
-    TRY_CAST(payload ->> 'active_jobs'    AS INTEGER)           AS active_jobs,
+    TRY_CAST(payload ->> 'running_jobs'   AS INTEGER)           AS running_jobs,
+    TRY_CAST(payload ->> 'waiting_jobs'   AS INTEGER)           AS waiting_jobs,
     TRY_CAST(payload ->> 'active_blades'  AS INTEGER)           AS active_blades,
-    TRY_CAST(payload ->> 'errored_jobs'   AS INTEGER)           AS errored_jobs,
     TRY_CAST(metrics ->> 'snapshot_duration_ms' AS BIGINT)      AS snapshot_duration_ms,
     error_code,
     error_message

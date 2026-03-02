@@ -1,7 +1,7 @@
 {
   "uid": "piper-farm-pressure",
   "title": "Farm Pressure",
-  "description": "Daily peak blade utilisation and errored job counts from Tractor farm snapshots (gold_farm_pressure_daily).",
+  "description": "Daily peak blade utilisation and waiting job counts from Tractor farm snapshots (gold_farm_pressure_daily).",
   "tags": ["piper", "farm"],
   "schemaVersion": 38,
   "version": 1,
@@ -29,8 +29,8 @@
     },
     {
       "id": 2,
-      "title": "Peak Errored Jobs",
-      "description": "Maximum errored Tractor jobs in a single snapshot per day.  Sustained non-zero values indicate systemic farm problems.",
+      "title": "Peak Waiting Jobs",
+      "description": "Maximum Tractor jobs waiting in queue in a single snapshot per day.  Sustained high values indicate farm saturation.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "piper_duckdb" },
@@ -41,7 +41,7 @@
       "targets": [
         {
           "refId": "A",
-          "rawSql": "SELECT event_date::TIMESTAMP AS time, peak_errored_jobs AS \"Peak Errored Jobs\" FROM gold_farm_pressure_daily ORDER BY event_date"
+          "rawSql": "SELECT event_date::TIMESTAMP AS time, peak_waiting_jobs AS \"Peak Waiting Jobs\" FROM gold_farm_pressure_daily ORDER BY event_date"
         }
       ]
     }
