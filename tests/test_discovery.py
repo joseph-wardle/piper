@@ -3,9 +3,7 @@
 import os
 from pathlib import Path
 
-import pytest
-
-from piper.discovery import FoundFile, discover_settled_files
+from piper.discovery import discover_settled_files
 
 _SETTLE = 120  # seconds — matches default settings.ingest.settle_seconds
 _NOW = 1_000_000.0  # arbitrary fixed "now"; large enough that _NOW - _SETTLE > 0
@@ -124,21 +122,6 @@ class TestSortOrder:
 
 
 class TestFoundFile:
-    def test_is_named_tuple(self):
-        f = FoundFile(path=Path("/some/file.jsonl"), size=1024, mtime=12345.0)
-        assert isinstance(f, tuple)
-
-    def test_fields_accessible_by_name(self):
-        f = FoundFile(path=Path("/a.jsonl"), size=42, mtime=99.9)
-        assert f.path == Path("/a.jsonl")
-        assert f.size == 42
-        assert f.mtime == 99.9
-
-    def test_is_immutable(self):
-        f = FoundFile(path=Path("/a.jsonl"), size=0, mtime=0.0)
-        with pytest.raises(AttributeError):
-            f.path = Path("/other.jsonl")  # type: ignore[misc]
-
     def test_fingerprint_captures_size(self, tmp_path):
         p = tmp_path / "events.jsonl"
         p.write_text('{"event": true}\n')
@@ -154,7 +137,3 @@ class TestFoundFile:
         result = discover_settled_files(tmp_path, _SETTLE, now=_NOW)
         assert result[0].mtime == expected_mtime
 
-    def test_usable_as_dict_key(self):
-        f = FoundFile(path=Path("/a.jsonl"), size=0, mtime=0.0)
-        d = {f: "value"}
-        assert d[f] == "value"

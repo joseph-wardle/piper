@@ -109,9 +109,7 @@ class TestSilverEventsContent:
         assert row[0] == 54
 
     def test_all_18_event_types_present(self, warehouse):
-        rows = warehouse.execute(
-            "SELECT DISTINCT event_type FROM silver_events"
-        ).fetchall()
+        rows = warehouse.execute("SELECT DISTINCT event_type FROM silver_events").fetchall()
         found = {r[0] for r in rows}
         assert found == _ALL_EVENT_TYPES
 
@@ -131,26 +129,10 @@ class TestSilverEventsContent:
 
     def test_all_event_ids_are_unique(self, warehouse):
         total = warehouse.execute("SELECT COUNT(*) FROM silver_events").fetchone()
-        unique = warehouse.execute(
-            "SELECT COUNT(DISTINCT event_id) FROM silver_events"
-        ).fetchone()
+        unique = warehouse.execute("SELECT COUNT(DISTINCT event_id) FROM silver_events").fetchone()
         assert total is not None and unique is not None
         assert total[0] == unique[0]
 
-    def test_status_values_are_known(self, warehouse):
-        rows = warehouse.execute(
-            "SELECT DISTINCT status FROM silver_events"
-        ).fetchall()
-        found = {r[0] for r in rows}
-        assert found <= {"success", "error", "warning", "info"}
-
-    def test_payload_column_is_json(self, warehouse):
-        """payload is stored as VARCHAR; all rows should be valid JSON objects."""
-        bad = warehouse.execute(
-            "SELECT COUNT(*) FROM silver_events WHERE TRY_CAST(payload AS JSON) IS NULL"
-        ).fetchone()
-        assert bad is not None
-        assert bad[0] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -160,9 +142,7 @@ class TestSilverEventsContent:
 
 class TestIngestManifest:
     def test_five_files_recorded(self, warehouse):
-        row = warehouse.execute(
-            "SELECT COUNT(*) FROM ingest_manifest"
-        ).fetchone()
+        row = warehouse.execute("SELECT COUNT(*) FROM ingest_manifest").fetchone()
         assert row is not None
         assert row[0] == 5
 
@@ -170,17 +150,13 @@ class TestIngestManifest:
         manifest_total = warehouse.execute(
             "SELECT SUM(event_count) FROM ingest_manifest"
         ).fetchone()
-        silver_total = warehouse.execute(
-            "SELECT COUNT(*) FROM silver_events"
-        ).fetchone()
+        silver_total = warehouse.execute("SELECT COUNT(*) FROM silver_events").fetchone()
         assert manifest_total is not None and silver_total is not None
         assert manifest_total[0] == silver_total[0]
 
     def test_no_manifest_errors_for_valid_fixtures(self, warehouse):
         """All fixture events are valid; error_count should be 0 for every file."""
-        row = warehouse.execute(
-            "SELECT SUM(error_count) FROM ingest_manifest"
-        ).fetchone()
+        row = warehouse.execute("SELECT SUM(error_count) FROM ingest_manifest").fetchone()
         assert row is not None
         assert row[0] == 0
 

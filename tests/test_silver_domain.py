@@ -337,7 +337,8 @@ class TestSilverStorageScanSummary:
             _count(
                 conn,
                 "silver_storage_scan_summary",
-                "status = 'error' AND (total_size_bytes IS NOT NULL OR scan_duration_s IS NOT NULL)",
+                "status = 'error' AND (total_size_bytes IS NOT NULL"
+                " OR scan_duration_s IS NOT NULL)",
             )
             == 0
         )
@@ -389,7 +390,8 @@ class TestSilverStorageScanBucket:
             _count(
                 conn,
                 "silver_storage_scan_bucket",
-                "status = 'error' AND (total_size_bytes IS NOT NULL OR scan_duration_s IS NOT NULL)",
+                "status = 'error' AND (total_size_bytes IS NOT NULL"
+                " OR scan_duration_s IS NOT NULL)",
             )
             == 0
         )

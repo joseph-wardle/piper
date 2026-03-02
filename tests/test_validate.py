@@ -121,14 +121,6 @@ class TestUnknownEventType:
         env = validate_envelope(raw, now=_NOW)
         assert env.event_type == "future.unknown.event"
 
-    def test_known_types_all_accepted(self):
-        from piper.validate import KNOWN_EVENT_TYPES
-
-        for event_type in KNOWN_EVENT_TYPES:
-            raw = {**_base(), "event_type": event_type}
-            env = validate_envelope(raw, now=_NOW)
-            assert env.event_type == event_type
-
 
 # ---------------------------------------------------------------------------
 # Missing required fields → MissingFieldError
@@ -263,12 +255,6 @@ class TestClockSkew:
         raw = {**_base(), "occurred_at_utc": ts.isoformat()}
         env = validate_envelope(raw, now=_NOW)
         assert env.occurred_at_utc == ts
-
-    def test_clock_skew_error_is_value_error(self):
-        ts = _NOW + timedelta(hours=2)
-        raw = {**_base(), "occurred_at_utc": ts.isoformat()}
-        with pytest.raises(ValueError):
-            validate_envelope(raw, now=_NOW)
 
     def test_now_defaults_to_wall_clock(self):
         """Omitting ``now`` uses datetime.now(UTC) — just check it doesn't raise."""

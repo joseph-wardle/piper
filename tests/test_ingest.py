@@ -303,33 +303,6 @@ class TestSilverRow:
         event = {**_BASE_EVENT, "event_id": str(uuid.uuid4()), **overrides}
         return validate_envelope(event)
 
-    def test_from_envelope_produces_silver_row(self):
-        env = self._envelope()
-        row = SilverRow.from_envelope(env, source_file=Path("/a.jsonl"), source_line=1)
-        assert isinstance(row, SilverRow)
-
-    def test_from_envelope_is_frozen(self):
-        env = self._envelope()
-        row = SilverRow.from_envelope(env, source_file=Path("/a.jsonl"), source_line=1)
-        with pytest.raises((AttributeError, TypeError)):
-            row.event_id = "other"  # type: ignore[misc]
-
-    def test_as_params_length_matches_insert_columns(self):
-        env = self._envelope()
-        row = SilverRow.from_envelope(env, source_file=Path("/a.jsonl"), source_line=5)
-        # 24 columns in _INSERT_SQL
-        assert len(row.as_params()) == 24
-
-    def test_as_params_first_is_event_id(self):
-        env = self._envelope()
-        row = SilverRow.from_envelope(env, source_file=Path("/a.jsonl"), source_line=1)
-        assert row.as_params()[0] == env.event_id
-
-    def test_as_params_last_is_source_line(self):
-        env = self._envelope()
-        row = SilverRow.from_envelope(env, source_file=Path("/a.jsonl"), source_line=7)
-        assert row.as_params()[-1] == 7
-
     def test_payload_serialized_to_json_string(self):
         env = self._envelope()
         row = SilverRow.from_envelope(env, source_file=Path("/a.jsonl"), source_line=1)

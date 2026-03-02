@@ -99,8 +99,7 @@ class TestMarkIngested:
         mark_ingested(conn, updated, event_count=20, error_count=1)
 
         row = conn.execute(
-            "SELECT file_size, event_count, error_count FROM ingest_manifest "
-            "WHERE file_path = ?",
+            "SELECT file_size, event_count, error_count FROM ingest_manifest WHERE file_path = ?",
             [str(_FILE.path)],
         ).fetchone()
         assert row == (8192, 20, 1)

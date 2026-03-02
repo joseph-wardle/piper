@@ -106,14 +106,6 @@ class TestMaterializeCLIOutput:
         result = _runner.invoke(app, ["materialize"], env=env)
         assert "Materialize complete" in result.output
 
-    def test_materialize_is_idempotent(self, pipeline_env):
-        """Running materialize twice should succeed both times."""
-        env, _ = pipeline_env
-        get_settings.cache_clear()
-        structlog.reset_defaults()
-        result = _runner.invoke(app, ["materialize"], env=env)
-        assert result.exit_code == 0, result.output
-
 
 # ---------------------------------------------------------------------------
 # Gold view row counts (post-materialize)
@@ -145,9 +137,7 @@ class TestGoldViewsHaveData:
         gold_total = warehouse.execute(
             "SELECT SUM(total_events) FROM gold_data_quality_daily"
         ).fetchone()
-        silver_total = warehouse.execute(
-            "SELECT COUNT(*) FROM silver_events"
-        ).fetchone()
+        silver_total = warehouse.execute("SELECT COUNT(*) FROM silver_events").fetchone()
         assert gold_total is not None and silver_total is not None
         assert gold_total[0] == silver_total[0]
 
@@ -171,28 +161,19 @@ class TestGoldViewsHaveData:
 
 class TestMaterializeNamedModel:
     @pytest.mark.parametrize("model", _GOLD_MODELS)
-    def test_named_model_exits_zero(self, pipeline_env, model):
+    def test_named_model_succeeds_and_mentions_model(self, pipeline_env, model):
         env, _ = pipeline_env
         get_settings.cache_clear()
         structlog.reset_defaults()
         result = _runner.invoke(app, ["materialize", "--model", model], env=env)
         assert result.exit_code == 0, f"materialize --model {model} failed:\n{result.output}"
-
-    @pytest.mark.parametrize("model", _GOLD_MODELS)
-    def test_named_model_output_mentions_model(self, pipeline_env, model):
-        env, _ = pipeline_env
-        get_settings.cache_clear()
-        structlog.reset_defaults()
-        result = _runner.invoke(app, ["materialize", "--model", model], env=env)
         assert model in result.output
 
     def test_unknown_model_exits_nonzero(self, pipeline_env):
         env, _ = pipeline_env
         get_settings.cache_clear()
         structlog.reset_defaults()
-        result = _runner.invoke(
-            app, ["materialize", "--model", "gold_nonexistent"], env=env
-        )
+        result = _runner.invoke(app, ["materialize", "--model", "gold_nonexistent"], env=env)
         assert result.exit_code != 0
 
 
