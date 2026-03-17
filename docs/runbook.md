@@ -246,6 +246,10 @@ docker compose restart grafana
 docker compose logs -f grafana   # wait for "HTTP Server Listen"
 ```
 
+The MotherDuck DuckDB datasource requires the Ubuntu-based Grafana image.
+If you switch the image back to the default Alpine variant, the plugin will
+not load correctly.
+
 ### Datasource returns no data
 
 1. Confirm the warehouse file is mounted correctly:
@@ -253,6 +257,10 @@ docker compose logs -f grafana   # wait for "HTTP Server Listen"
    ```bash
    docker compose exec grafana ls -lh /var/piper/telemetry.duckdb
    ```
+
+   The directory mount must be writable from inside the container. If the
+   datasource health check reports `Read-only file system`, Grafana cannot
+   open DuckDB and every panel will return no data.
 
 2. Confirm gold views exist (they are rebuilt by `piper materialize`):
 

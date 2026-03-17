@@ -15,9 +15,22 @@ DOWNLOAD_URL="https://github.com/motherduckdb/grafana-duckdb-datasource/releases
 PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)/grafana/plugins"
 TARGET="${PLUGIN_DIR}/${PLUGIN_ID}"
 
+installed_version() {
+    local plugin_json="${TARGET}/plugin.json"
+    if [ -f "$plugin_json" ]; then
+        sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$plugin_json" | head -n1
+    fi
+}
+
 if [ -d "$TARGET" ]; then
-    echo "Plugin already installed at $TARGET"
-    exit 0
+    CURRENT_VERSION="$(installed_version || true)"
+    if [ "$CURRENT_VERSION" = "$PLUGIN_VERSION" ]; then
+        echo "Plugin already installed at $TARGET (v$CURRENT_VERSION)"
+        exit 0
+    fi
+
+    echo "Upgrading ${PLUGIN_ID} from v${CURRENT_VERSION:-unknown} to v${PLUGIN_VERSION}..."
+    rm -rf "$TARGET"
 fi
 
 mkdir -p "$PLUGIN_DIR"

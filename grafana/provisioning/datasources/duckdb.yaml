@@ -1,11 +1,12 @@
-# Grafana datasource — Piper DuckDB warehouse (read-only)
+# Grafana datasource — Piper DuckDB warehouse
 #
 # Plugin: motherduck-duckdb-datasource (unsigned, installed via scripts/setup_grafana_plugin.sh)
 # Allowed via GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS in docker-compose.yml.
 #
-# The database file is mounted into the container at /var/piper/telemetry.duckdb
-# via docker-compose.yml.  Do not change the path here without updating the
-# volume mount in docker-compose.yml.
+# The warehouse directory is mounted into the container at /var/piper via
+# docker-compose.yml so the DuckDB plugin can open the database normally.
+# Do not change the path here without updating the volume mount in
+# docker-compose.yml.
 
 apiVersion: 1
 

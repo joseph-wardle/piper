@@ -4,7 +4,8 @@
 #   scripts/setup_grafana_plugin.sh   # once — downloads the DuckDB plugin
 #   podman compose up -d
 #
-# The DuckDB warehouse is mounted read-only so Grafana never writes to it.
+# The DuckDB datasource opens the database in a mode that requires write access.
+# Mount the whole warehouse directory so DuckDB can create sidecar state files.
 # Set PIPER_DATA_ROOT to override the default telemetry root, e.g.:
 #   PIPER_DATA_ROOT=/tmp/piper_dev podman compose up -d
 #
@@ -12,7 +13,8 @@
 
 services:
   grafana:
-    image: grafana/grafana:10.4.0
+    # The MotherDuck DuckDB plugin requires the Ubuntu/glibc Grafana image.
+    image: grafana/grafana:12.4.1-ubuntu
     user: "0"
     ports:
       - "3000:3000"
@@ -26,7 +28,7 @@ services:
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/plugins/motherduck-duckdb-datasource:/var/lib/grafana/plugins/motherduck-duckdb-datasource:ro
-      - ${PIPER_DATA_ROOT:-/groups/sandwich/05_production/.telemetry}/warehouse/telemetry.duckdb:/var/piper/telemetry.duckdb:ro
+      - ${PIPER_DATA_ROOT:-/groups/sandwich/05_production/.telemetry}/warehouse:/var/piper
       - grafana_data:/var/lib/grafana
     restart: unless-stopped
 

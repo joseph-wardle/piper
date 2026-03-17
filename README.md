@@ -65,10 +65,11 @@ uv run piper backfill --start 2026-01-01 --end 2026-01-31
 
 The dashboard stack uses the [motherduck-duckdb-datasource](https://github.com/motherduckdb/grafana-duckdb-datasource)
 plugin to query DuckDB directly. It is unsigned (not in the Grafana catalog),
-so it must be downloaded once before starting the stack:
+requires the Ubuntu-based Grafana image, and must be downloaded once before
+starting the stack:
 
 ```bash
-scripts/setup_grafana_plugin.sh   # one-time download (~400MB)
+scripts/setup_grafana_plugin.sh   # install or upgrade the DuckDB plugin
 podman compose up -d
 ```
 
@@ -76,8 +77,9 @@ Grafana is available at <http://localhost:3000> (user: `admin`, pass: `piper`).
 Anonymous read-only access is enabled by default.
 
 The DuckDB datasource and all six dashboards are provisioned automatically
-from `grafana/provisioning/`. The warehouse is mounted read-only at
-`/var/piper/telemetry.duckdb` inside the container.
+from `grafana/provisioning/`. The warehouse directory is mounted at
+`/var/piper` inside the container, and the datasource reads
+`/var/piper/telemetry.duckdb`.
 
 To point at a non-default warehouse location:
 
@@ -86,7 +88,8 @@ PIPER_DATA_ROOT=/path/to/.telemetry podman compose up -d
 ```
 
 > **Note:** `grafana/plugins/` is gitignored. Anyone cloning the repo must
-> run `scripts/setup_grafana_plugin.sh` before starting Grafana.
+> run `scripts/setup_grafana_plugin.sh` before starting Grafana, and rerun it
+> when the pinned plugin version changes.
 
 ---
 
