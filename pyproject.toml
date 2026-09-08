@@ -1,0 +1,25 @@
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+piper-core = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "ruff>=0.14.2",
+    "ty==0.0.79",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "ANN", "PTH", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["packages"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["piper", "piper_cli"]
