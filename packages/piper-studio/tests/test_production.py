@@ -1,4 +1,4 @@
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -7,6 +7,8 @@ from piper_studio.production import PRODUCTION_ENV, load_production
 
 _COMPLETE = """
 name = "sandwich"
+root = "/groups/sandwich/05_production"
+types = ["Character", "Environment", "Set Piece", "Vehicle"]
 
 [shotgrid]
 site = "https://byuanimation.shotgunstudio.com"
@@ -21,10 +23,12 @@ def write_production(tmp_path: Path, text: str) -> Path:
     return path
 
 
-def test_reads_the_production_and_its_shotgrid_project(tmp_path: Path) -> None:
+def test_reads_the_production_its_storage_and_its_shotgrid_project(tmp_path: Path) -> None:
     production = load_production(write_production(tmp_path, _COMPLETE))
 
     assert production.name == "sandwich"
+    assert production.root == PurePosixPath("/groups/sandwich/05_production")
+    assert production.types == ("Character", "Environment", "Set Piece", "Vehicle")
     assert production.shotgrid.site == "https://byuanimation.shotgunstudio.com"
     assert production.shotgrid.script == "sandwich_pipeline"
     assert production.shotgrid.project == 716
@@ -59,8 +63,10 @@ def test_malformed_toml_says_so(tmp_path: Path) -> None:
 
 
 def test_a_missing_section_names_the_key(tmp_path: Path) -> None:
+    without_shotgrid = _COMPLETE.split("[shotgrid]")[0]
+
     with pytest.raises(ConfigError, match="shotgrid"):
-        load_production(write_production(tmp_path, 'name = "sandwich"\n'))
+        load_production(write_production(tmp_path, without_shotgrid))
 
 
 def test_a_missing_value_names_the_key(tmp_path: Path) -> None:

@@ -17,6 +17,7 @@ def test_shows_names_and_details_but_never_ids(
     out = capsys.readouterr().out
     assert "Frying Pan" in out
     assert "Prop" in out
+    assert "kitchen" in out
     assert "pan_test" in out
     assert "Kitchen Counter" not in out
     assert "7701" not in out
@@ -45,8 +46,8 @@ def test_json_carries_the_record_fields_exactly(
 
     assert json.loads(capsys.readouterr().out) == {
         "assets": [
-            {"id": "7701", "name": "Frying Pan", "kind": "Prop"},
-            {"id": "7702", "name": "Pan Lid", "kind": None},
+            {"id": "7701", "name": "Frying Pan", "type": "Prop", "folder": "kitchen"},
+            {"id": "7702", "name": "Pan Lid", "type": None, "folder": None},
         ],
         "shots": [{"id": "8802", "name": "pan_test", "sequence": None}],
     }

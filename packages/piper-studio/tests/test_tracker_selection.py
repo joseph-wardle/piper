@@ -1,3 +1,5 @@
+from pathlib import PurePosixPath
+
 import pytest
 
 from piper.errors import ConfigError
@@ -7,6 +9,8 @@ from piper_studio.tracker import SHOTGRID_KEY_ENV, tracker_for
 
 _PRODUCTION = Production(
     name="sandwich",
+    root=PurePosixPath("/groups/sandwich/05_production"),
+    types=("Set Piece",),
     shotgrid=ShotGridConfig(
         site="https://byuanimation.shotgunstudio.com",
         script="sandwich_pipeline",

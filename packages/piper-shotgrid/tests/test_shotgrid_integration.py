@@ -17,6 +17,9 @@ pytestmark = [
 SITE = "https://byuanimation.shotgunstudio.com"
 SCRIPT = "sandwich_pipeline"
 PROJECT = 716
+# An inactive copy of the production, kept for writes. The live one is never written.
+# This is for development purposes. v1.0.0 should not have this.
+WRITE_PROJECT = 782
 
 
 @pytest.fixture(scope="module")
@@ -75,10 +78,12 @@ def test_shots_carry_a_readable_sequence_name(every_shot: tuple[Shot, ...]) -> N
     assert all(isinstance(sequence, str) for sequence in sequences)
 
 
-def test_assets_carry_the_tracker_classification(every_asset: tuple[Asset, ...]) -> None:
-    kinds = {asset.kind for asset in every_asset if asset.kind}
+def test_assets_carry_their_type_and_folder(every_asset: tuple[Asset, ...]) -> None:
+    types = {asset.type for asset in every_asset if asset.type}
+    folders = {asset.folder for asset in every_asset if asset.folder}
 
-    assert len(kinds) > 1
+    assert len(types) > 1
+    assert len(folders) > 1
 
 
 def test_nothing_matches_a_nonsense_query(tracker: ShotGridTracker) -> None:
@@ -91,6 +96,19 @@ def test_a_rejected_credential_stays_a_piper_error() -> None:
 
     with pytest.raises(TrackerError, match="cannot read assets"):
         tracker.find_assets("pan")
+
+
+def test_the_site_refuses_a_type_it_does_not_offer_and_creates_nothing() -> None:
+    # Piper checks a type only against the production's configured list and
+    # trusts the site to refuse the rest. This proves the site does.
+    tracker = ShotGridTracker(
+        site=SITE, script=SCRIPT, key=os.environ["PIPER_SHOTGRID_KEY"], project=WRITE_PROJECT
+    )
+
+    with pytest.raises(TrackerError, match=r"cannot create asset .* not a valid list value"):
+        tracker.create_asset("Piper Rejected Type", type="Not A Type", folder="piper_test")
+
+    assert tracker.find_assets("Piper Rejected Type") == ()
 
 
 def test_an_unreachable_site_stays_a_piper_error() -> None:

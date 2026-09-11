@@ -6,14 +6,16 @@ from typing import Protocol
 class Asset:
     """An asset in the production tracker.
 
-    ``id`` is opaque and belongs to the tracker;
-    ``name`` is what artists see. ``kind`` is the tracker's own classification
-    and may be absent.
+    ``id`` is opaque and belongs to the tracker; ``name`` is what artists see.
+    ``type`` is the tracker's classification of what the asset is, and
+    ``folder`` is where artists browse for it. Either may be absent from an
+    asset Piper did not create.
     """
 
     id: str
     name: str
-    kind: str | None
+    type: str | None
+    folder: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,8 +28,10 @@ class Shot:
 
 
 class Tracker(Protocol):
-    """Reads one production's entities from the tracker that owns them."""
+    """One production's entities, in the tracker that owns them."""
 
     def find_assets(self, name_contains: str) -> tuple[Asset, ...]: ...
 
     def find_shots(self, name_contains: str) -> tuple[Shot, ...]: ...
+
+    def create_asset(self, name: str, *, type: str, folder: str) -> Asset: ...

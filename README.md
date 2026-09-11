@@ -6,8 +6,8 @@ the tracker, filesystem, OpenUSD, scheduler, and review systems keep the
 authority they already have.
 
 Right now it is a sandbox for me to test workflows for my capstone film
-production. The first capability, `piper find`, reads assets and shots from the
-real tracker.
+production. `piper find` reads assets and shots from the real tracker, and
+`piper create asset` creates an asset there and its directory in storage.
 
 ## Layout
 
@@ -42,6 +42,8 @@ export PIPER_SHOTGRID_KEY=...
 
 ```toml
 name = "sandwich"
+root = "/groups/sandwich/05_production"
+types = ["Character", "Environment", "Set Piece", "Vehicle"]
 
 [shotgrid]
 site = "https://byuanimation.shotgunstudio.com"
@@ -49,11 +51,28 @@ script = "sandwich_pipeline"
 project = 716
 ```
 
+`root` is where the production is stored. `types` are the asset types artists
+may create, chosen from those ShotGrid offers.
+
 ```
 piper find pan          # assets and shots whose name contains "pan"
 piper find              # the whole production
 piper find pan --json   # the same result, for another program
 ```
+
+```
+piper create asset "Frying Pan" --type "Set Piece" --folder kitchen
+piper create asset "Toaster" --type "Set Piece" --folder garage --new-folder
+```
+
+The first creates the asset in ShotGrid, then `<root>/asset/kitchen/frying_pan`.
+A folder no asset is in yet must be started with `--new-folder`. Running a
+create again finishes whichever half is missing.
+
+`create` writes to whichever project and root the configuration names, and the
+example above is the live production. Until the next film has its own project,
+create against a configuration for the inactive copy instead: `project = 782`
+and `root = "/groups/sandwich/04_temp"`.
 
 ## Checks
 
@@ -61,7 +80,7 @@ With [just](https://just.systems/):
 
 ```
 just check              # lint, typecheck, test, core-isolation
-just test-integration   # reads real ShotGrid; needs PIPER_SHOTGRID_KEY
+just test-integration   # real ShotGrid and storage; needs PIPER_SHOTGRID_KEY
 just build
 ```
 

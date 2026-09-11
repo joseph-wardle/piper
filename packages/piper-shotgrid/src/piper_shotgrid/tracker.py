@@ -1,4 +1,4 @@
-"""Reads a ShotGrid project through Piper's tracker contract.
+"""Reads and creates entities in a ShotGrid project through Piper's tracker contract.
 
 ShotGrid field names, filter syntax, entity dictionaries, and exceptions do not
 leave this module.
@@ -13,7 +13,7 @@ from shotgun_api3.lib import httplib2
 from piper.errors import TrackerError
 from piper.tracker import Asset, Shot
 
-_ASSET_FIELDS = ["id", "code", "sg_asset_type"]
+_ASSET_FIELDS = ["id", "code", "sg_asset_type", "sg_subdirectory"]
 _SHOT_FIELDS = ["id", "code", "sg_sequence"]
 
 # `shotgun_api3` re-raises whatever its transport raised, so `ShotgunError`
@@ -30,7 +30,7 @@ _REQUEST_FAILURES = (
 
 
 class ShotGridTracker:
-    """Reads one ShotGrid project."""
+    """One ShotGrid project, and nothing else on its site."""
 
     def __init__(self, *, site: str, script: str, key: str, project: int) -> None:
         self._site = site
@@ -44,15 +44,7 @@ class ShotGridTracker:
 
     def find_assets(self, name_contains: str) -> tuple[Asset, ...]:
         entities = self._find("Asset", _ASSET_FIELDS, name_contains)
-        assets = (
-            Asset(
-                id=str(entity["id"]),
-                name=entity["code"] or "",
-                kind=entity["sg_asset_type"] or None,
-            )
-            for entity in entities
-        )
-        return tuple(sorted(assets, key=_by_name))
+        return tuple(sorted((_asset(entity) for entity in entities), key=_by_name))
 
     def find_shots(self, name_contains: str) -> tuple[Shot, ...]:
         entities = self._find("Shot", _SHOT_FIELDS, name_contains)
@@ -66,12 +58,29 @@ class ShotGridTracker:
         )
         return tuple(sorted(shots, key=_by_name))
 
+    # No project parameter, on purpose: the script key can write to every
+    # project on the site, so the project fixed at construction is the only
+    # thing keeping a create out of another production.
+    def create_asset(self, name: str, *, type: str, folder: str) -> Asset:
+        data = {
+            "project": self._project_link(),
+            "code": name,
+            "sg_asset_type": type,
+            "sg_subdirectory": folder,
+        }
+        try:
+            entity = self._shotgrid.create("Asset", data, _ASSET_FIELDS)
+        except _REQUEST_FAILURES as exc:
+            raise TrackerError(
+                f"shotgrid: cannot create asset {name!r} in project {self._project} "
+                f"on {self._site} ({exc})"
+            ) from exc
+        return _asset(entity)
+
     def _find(
         self, entity_type: str, fields: list[str], name_contains: str
     ) -> list[dict[str, Any]]:
-        filters: list[list[Any]] = [
-            ["project", "is", {"type": "Project", "id": self._project}],
-        ]
+        filters: list[list[Any]] = [["project", "is", self._project_link()]]
         if name_contains:
             filters.append(["code", "contains", name_contains])
         try:
@@ -84,6 +93,18 @@ class ShotGridTracker:
         # `shotgun_api3` types its results as a TypedDict declaring only `id`
         # and `type`, but returns every field asked for.
         return cast("list[dict[str, Any]]", found)
+
+    def _project_link(self) -> dict[str, Any]:
+        return {"type": "Project", "id": self._project}
+
+
+def _asset(entity: dict[str, Any]) -> Asset:
+    return Asset(
+        id=str(entity["id"]),
+        name=entity["code"] or "",
+        type=entity["sg_asset_type"] or None,
+        folder=entity["sg_subdirectory"] or None,
+    )
 
 
 def _by_name(entity: Asset | Shot) -> str:

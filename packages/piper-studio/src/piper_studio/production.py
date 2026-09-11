@@ -4,7 +4,7 @@ import os
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TypeVar
 
 from piper.errors import ConfigError
@@ -25,9 +25,15 @@ class ShotGridConfig:
 
 @dataclass(frozen=True, slots=True)
 class Production:
-    """One production and the systems that hold it."""
+    """One production, where it is stored, and the systems that hold it.
+
+    ``types`` are the asset types artists may create, chosen from those the
+    tracker offers.
+    """
 
     name: str
+    root: PurePosixPath
+    types: tuple[str, ...]
     shotgrid: ShotGridConfig
 
 
@@ -44,6 +50,8 @@ def load_production(path: Path | None = None) -> Production:
     shotgrid = _required(document, "shotgrid", dict, path)
     return Production(
         name=_required(document, "name", str, path),
+        root=_root(document, path),
+        types=_types(document, path),
         shotgrid=ShotGridConfig(
             site=_required(shotgrid, "site", str, path, prefix="shotgrid."),
             script=_required(shotgrid, "script", str, path, prefix="shotgrid."),
@@ -59,6 +67,21 @@ def _configured_path() -> Path:
             f"production configuration: {PRODUCTION_ENV} is not set to a configuration file"
         )
     return Path(configured)
+
+
+def _root(document: Mapping[str, object], path: Path) -> PurePosixPath:
+    root = PurePosixPath(_required(document, "root", str, path))
+    if not root.is_absolute():
+        raise ConfigError(f"production configuration: root in {path} must be absolute, not {root}")
+    return root
+
+
+def _types(document: Mapping[str, object], path: Path) -> tuple[str, ...]:
+    listed = _required(document, "types", list, path)
+    types = tuple(name for name in listed if isinstance(name, str))
+    if not types or len(types) != len(listed):
+        raise ConfigError(f"production configuration: types in {path} must list asset type names")
+    return types
 
 
 def _required(
