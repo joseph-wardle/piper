@@ -1,18 +1,13 @@
 [project]
-name = "piper-cli"
+name = "piper-studio"
 version = "0.1.0"
-description = "Command-line front door to Piper operations."
+description = "Studio conventions, production configuration, and provider selection."
 requires-python = ">=3.11"
 license = "Apache-2.0"
 dependencies = [
     "piper-core",
-    "piper-studio",
-    "cyclopts>=4.25.2",
-    "rich>=14",
+    "piper-shotgrid",
 ]
-
-[project.scripts]
-piper = "piper_cli.main:main"
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]

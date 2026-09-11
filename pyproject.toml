@@ -3,6 +3,8 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 piper-core = { workspace = true }
+piper-shotgrid = { workspace = true }
+piper-studio = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -20,6 +22,10 @@ select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "ANN", "PTH", "RUF"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages"]
+addopts = ["-m", "not integration"]
+markers = [
+    "integration: talks to a real external system; needs credentials",
+]
 
 [tool.ruff.lint.isort]
-known-first-party = ["piper", "piper_cli"]
+known-first-party = ["piper", "piper_cli", "piper_shotgrid", "piper_studio"]
