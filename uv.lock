@@ -107,6 +107,7 @@ dependencies = [
     { name = "piper-core" },
     { name = "piper-studio" },
     { name = "rich" },
+    { name = "usd-core" },
 ]
 
 [package.metadata]
@@ -115,6 +116,7 @@ requires-dist = [
     { name = "piper-core", editable = "packages/piper-core" },
     { name = "piper-studio", editable = "packages/piper-studio" },
     { name = "rich", specifier = ">=14" },
+    { name = "usd-core", specifier = "==25.5" },
 ]
 
 [[package]]
@@ -269,4 +271,17 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/10/7d/f357f5768872ffa3a026707477a880aba7582af5f6c7c7eab74f61167f3d/ty-0.0.79-py3-none-win32.whl", hash = "sha256:ca266de079a187ed6f0f5b802f6fc3b26164753c7347a04daed21d86c938d33d", size = 12833644, upload-time = "2026-09-07T21:51:50.766Z" },
     { url = "https://files.pythonhosted.org/packages/f9/f5/2a2d967be6286ee8fb626161e610fd48624ba5e6712cea932adb2d6b40b6/ty-0.0.79-py3-none-win_amd64.whl", hash = "sha256:88cb357d36ad79181015581365769fff4b1ec580cd12de83addfa98663214fd3", size = 13494258, upload-time = "2026-09-07T21:51:53.105Z" },
     { url = "https://files.pythonhosted.org/packages/8b/74/49b88f104f88d9757497758bf57ba53e3612442b49500d1092d4d6f1daa3/ty-0.0.79-py3-none-win_arm64.whl", hash = "sha256:d29da73f2840ae2631bc62ef8f8d509a94edea596e5b3072851f67e4729d744c", size = 13327517, upload-time = "2026-09-07T21:51:55.602Z" },
+]
+
+[[package]]
+name = "usd-core"
+version = "25.5"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/66/4d/c60fc2f19f73d7092e099667b8406dd7b37d81a736e8cc91537661512ae5/usd_core-25.5-cp311-none-macosx_10_9_universal2.whl", hash = "sha256:656717b3671a70aa73033c5145a83d3b9ef532f9fb8ce6846526d1f2ce5dfe95", size = 39919006, upload-time = "2025-04-28T22:53:07.083Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/42/4317732adc663215d76ba4b3840411c25e47f73478b9788771f128a236d1/usd_core-25.5-cp311-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0a66bfa5fbd3b0b6009e60d6781b4b3fa0bae67de20a7893811aab7ec4802b9d", size = 26910224, upload-time = "2025-04-28T22:53:10.709Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/27/c3cc3a5f6f708bdf8934fb8d2993161e0855b62f68389d8838bf3147eda6/usd_core-25.5-cp311-none-win_amd64.whl", hash = "sha256:38ecd693d0c750eb4e63370834c763f50f243b2580d99cebde993cdd1706ea3a", size = 13882801, upload-time = "2025-04-28T22:53:13.491Z" },
+    { url = "https://files.pythonhosted.org/packages/66/13/608d68aba75964cd23d4fd33d111dbcc9d78027e5dc4fa500b1d37c8752a/usd_core-25.5-cp312-none-macosx_10_9_universal2.whl", hash = "sha256:43ac347de63e68ac8f77d876b4d9cdb63781085a4f537b384d8a171ead3799ae", size = 40141136, upload-time = "2025-04-28T22:53:16.961Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/13/8b6a8092eaea871ba78d64772a6ce8ce0a72833769353cb8bf054c91fc2f/usd_core-25.5-cp312-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6d4dbc80fc6dbbfe1e42cebcb61801197e62490a447ad4f7d946427c802c2037", size = 26817605, upload-time = "2025-04-28T22:53:21.099Z" },
+    { url = "https://files.pythonhosted.org/packages/25/bf/11b0aec6f7c75ee4c671aeb623702847f3ad46bdbb0e62c44d27b60746b0/usd_core-25.5-cp312-none-win_amd64.whl", hash = "sha256:12dcd6f15a4c24bf3b48807f8c04116054a2fa8173bb6319b8e787ca800df0b7", size = 13918710, upload-time = "2025-04-28T22:53:26.81Z" },
 ]

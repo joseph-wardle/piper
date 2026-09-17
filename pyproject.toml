@@ -13,6 +13,10 @@ dev = [
     "ty==0.0.79",
 ]
 
+[tool.ty.analysis]
+# USD's Python modules are compiled extensions with no type information.
+replace-imports-with-any = ["pxr", "pxr.**"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

@@ -1,8 +1,16 @@
+import os
 from pathlib import PurePosixPath
 
 import pytest
 
-from piper_studio.layout import asset_root, slug
+from piper_studio.layout import (
+    asset_root,
+    product_root,
+    slug,
+    version_directory,
+    version_name,
+    version_number,
+)
 
 
 @pytest.mark.parametrize(
@@ -32,3 +40,56 @@ def test_no_folder_or_name_reaches_outside_the_root() -> None:
     directory = asset_root(PurePosixPath("/production"), "../../etc", "../passwd")
 
     assert directory == PurePosixPath("/production/asset/etc/passwd")
+
+
+def test_a_product_lives_in_its_assets_publish_directory() -> None:
+    directory = product_root(PurePosixPath("/production"), "Kitchen", "Frying Pan", "geo")
+
+    assert directory == PurePosixPath("/production/asset/kitchen/frying_pan/publish/geo")
+
+
+@pytest.mark.parametrize(
+    ("name", "number"),
+    [
+        ("v001", 1),
+        ("v042", 42),
+        ("v1000", 1000),
+        ("v0007", 7),
+        ("v01", None),
+        ("V001", None),
+        ("v001a", None),
+        ("v\u0661\u0662\u0663", None),
+        (".tmp_v001", None),
+    ],
+)
+def test_a_version_is_v_and_at_least_three_digits(name: str, number: int | None) -> None:
+    assert version_number(name) == number
+
+
+def test_a_version_number_is_spelled_with_at_least_three_digits() -> None:
+    assert [version_name(number) for number in (1, 42, 1000)] == ["v001", "v042", "v1000"]
+
+
+@pytest.mark.parametrize(
+    ("path", "version"),
+    [
+        (
+            "asset/kitchen/frying_pan/publish/geo/v004/geo.usd",
+            "asset/kitchen/frying_pan/publish/geo/v004",
+        ),
+        (
+            "asset/kitchen/frying_pan/publish/geo/v004/src/pan.ma",
+            "asset/kitchen/frying_pan/publish/geo/v004",
+        ),
+        ("asset/kitchen/frying_pan/publish/geo/v004", None),
+        ("asset/kitchen/frying_pan/publish/geo/.tmp_1a2b/geo.usd", None),
+        ("asset/kitchen/frying_pan/work/geo/v004/geo.usd", None),
+        ("../elsewhere/asset/kitchen/frying_pan/publish/geo/v004/geo.usd", None),
+    ],
+)
+def test_a_path_inside_a_version_names_that_version(path: str, version: str | None) -> None:
+    root = PurePosixPath("/production/shows/pan")
+
+    found = version_directory(root, PurePosixPath(os.path.normpath(root / path)))
+
+    assert found == (root / version if version else None)

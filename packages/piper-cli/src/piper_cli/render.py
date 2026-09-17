@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from rich import box
 from rich.console import Console
@@ -11,6 +12,11 @@ from rich.text import Text
 from piper.find import Matches
 from piper.tracker import Asset
 from piper_studio.create import CreateAssetResult
+from piper_studio.layout import version_name
+
+if TYPE_CHECKING:
+    # For its type only: importing the module loads USD.
+    from piper_studio.publish import PublishResult
 
 _MISSING = "—"
 
@@ -64,6 +70,27 @@ def create_asset_result_as_text(result: CreateAssetResult) -> None:
     print(f"{verb} asset {asset.name!r} ({asset.type}, in {asset.folder})")
     verb = "Created" if result.directory_created else "Found"
     print(f"{verb} {result.directory}")
+
+
+def publish_result_as_json(result: "PublishResult", error: str | None = None) -> None:
+    """Write the version a publish installed to stdout as one JSON object."""
+    payload: dict[str, object] = {
+        "asset": _asset_json(result.asset),
+        "product": result.product,
+        "version": result.version,
+        "path": str(result.path),
+        "record_id": result.record_id,
+    }
+    if error is not None:
+        payload["error"] = error
+    print(json.dumps(payload))
+
+
+def publish_result_as_text(result: "PublishResult") -> None:
+    """Write which version a publish installed, and its root layer."""
+    version = version_name(result.version)
+    print(f"Published {result.product} {version} of {result.asset.name!r}")
+    print(result.path)
 
 
 def _asset_json(asset: Asset) -> dict[str, str | None]:

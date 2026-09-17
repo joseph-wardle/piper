@@ -1,13 +1,13 @@
 """Creating an asset: its tracker entity first, then its directory."""
 
 import os
-import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from piper.errors import PiperError
 from piper.tracker import Asset, Tracker
 from piper_studio.layout import asset_root, slug
+from piper_studio.storage import make_directories
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,7 +81,7 @@ def create_asset(
 
     if not directory_exists:
         try:
-            _make_directories(Path(directory))
+            make_directories(Path(directory))
         except OSError as exc:
             unfinished = CreateAssetResult(
                 asset, directory, asset_created=existing is None, directory_created=False
@@ -98,17 +98,3 @@ def create_asset(
         asset_created=existing is None,
         directory_created=not directory_exists,
     )
-
-
-def _make_directories(directory: Path) -> None:
-    """Make ``directory`` and its missing parents, each with its parent's group and permissions."""
-    missing: list[Path] = []
-    for path in (directory, *directory.parents):
-        if path.is_dir():
-            break
-        missing.append(path)
-    for path in reversed(missing):
-        parent = path.parent.stat()
-        path.mkdir()
-        os.chown(path, -1, parent.st_gid)
-        path.chmod(stat.S_IMODE(parent.st_mode))

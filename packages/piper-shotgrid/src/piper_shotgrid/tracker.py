@@ -20,7 +20,7 @@ _SHOT_FIELDS = ["id", "code", "sg_sequence"]
 # alone leaks. An HTTP status of 300 or worse arrives as `shotgun_api3.Error`
 # (`xmlrpc.client.Error`), and an unresolvable host as
 # `httplib2.ServerNotFoundError`, neither of which derives from it.
-_REQUEST_FAILURES = (
+REQUEST_FAILURES = (
     shotgun_api3.ShotgunError,
     shotgun_api3.Error,
     httplib2.HttpLib2Error,
@@ -70,7 +70,7 @@ class ShotGridTracker:
         }
         try:
             entity = self._shotgrid.create("Asset", data, _ASSET_FIELDS)
-        except _REQUEST_FAILURES as exc:
+        except REQUEST_FAILURES as exc:
             raise TrackerError(
                 f"shotgrid: cannot create asset {name!r} in project {self._project} "
                 f"on {self._site} ({exc})"
@@ -85,7 +85,7 @@ class ShotGridTracker:
             filters.append(["code", "contains", name_contains])
         try:
             found = self._shotgrid.find(entity_type, filters, fields)
-        except _REQUEST_FAILURES as exc:
+        except REQUEST_FAILURES as exc:
             raise TrackerError(
                 f"shotgrid: cannot read {entity_type.lower()}s of project "
                 f"{self._project} from {self._site} ({exc})"

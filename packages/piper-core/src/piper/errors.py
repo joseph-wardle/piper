@@ -11,3 +11,7 @@ class ConfigError(PiperError):
 
 class TrackerError(PiperError):
     """A tracker could not answer the question Piper asked."""
+
+
+class RegistryError(PiperError):
+    """A registry refused a record, or could not say whether it kept one."""

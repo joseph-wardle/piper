@@ -2,6 +2,7 @@
 
 import sys
 from collections.abc import Sequence
+from pathlib import Path, PurePosixPath
 from typing import Annotated
 
 from cyclopts import App, Parameter
@@ -9,9 +10,11 @@ from cyclopts import App, Parameter
 import piper
 from piper.errors import PiperError
 from piper.find import find
+from piper.tracker import Asset, Tracker
 from piper_cli import render
 from piper_studio.create import PartialCreateAssetError, UnknownFolderError, create_asset
 from piper_studio.production import load_production
+from piper_studio.registry import registry_for
 from piper_studio.tracker import tracker_for
 
 # `result_action` off: Cyclopts otherwise calls `sys.exit` for the command, and
@@ -93,6 +96,63 @@ def create_asset_command(
         render.create_asset_result_as_json(result)
     else:
         render.create_asset_result_as_text(result)
+
+
+@app.command(name="publish")
+def publish_command(
+    asset: str,
+    product: str,
+    layer: Path,
+    /,
+    *,
+    as_json: Annotated[bool, Parameter(name="--json")] = False,
+) -> None:
+    """Install an exported USD layer as the next version of an asset's product, and register it.
+
+    Parameters
+    ----------
+    asset
+        The asset's name, spelled exactly as the tracker spells it.
+    product
+        What the layer holds, such as geo or mtl.
+    layer
+        The exported USD layer.
+    as_json
+        Write the result as JSON for another program.
+    """
+    # Imported here: loading USD takes most of a second, and no other command needs it.
+    from piper_studio.publish import PartialPublishError, publish
+
+    production = load_production()
+    try:
+        result = publish(
+            registry_for(production),
+            root=production.root,
+            asset=_asset_named(tracker_for(production), asset),
+            product=product,
+            layer=PurePosixPath(layer),
+        )
+    except PartialPublishError as exc:
+        if as_json:
+            render.publish_result_as_json(exc.result, error=str(exc))
+        raise
+    if as_json:
+        render.publish_result_as_json(result)
+    else:
+        render.publish_result_as_text(result)
+
+
+def _asset_named(tracker: Tracker, name: str) -> Asset:
+    found = tracker.find_assets(name)
+    named = [asset for asset in found if asset.name == name]
+    if len(named) == 1:
+        return named[0]
+    if named:
+        raise PiperError(f"{len(named)} assets are named {name!r}; rename all but one")
+    similar = ", ".join(repr(asset.name) for asset in found)
+    raise PiperError(
+        f"no asset is named {name!r}" + (f" (names containing it: {similar})" if similar else "")
+    )
 
 
 def main(tokens: Sequence[str] | None = None) -> int:

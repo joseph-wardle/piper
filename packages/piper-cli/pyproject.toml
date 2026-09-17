@@ -9,6 +9,7 @@ dependencies = [
     "piper-studio",
     "cyclopts>=4.25.2",
     "rich>=14",
+    "usd-core==25.5",
 ]
 
 [project.scripts]

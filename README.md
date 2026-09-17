@@ -69,10 +69,21 @@ The first creates the asset in ShotGrid, then `<root>/asset/kitchen/frying_pan`.
 A folder no asset is in yet must be started with `--new-folder`. Running a
 create again finishes whichever half is missing.
 
-`create` writes to whichever project and root the configuration names, and the
-example above is the live production. Until the next film has its own project,
-create against a configuration for the inactive copy instead: `project = 782`
-and `root = "/groups/sandwich/04_temp"`.
+```
+piper publish "Frying Pan" geo ./export/geo.usd
+```
+
+`publish` copies the layer and every file it depends on into the product's
+next version, `<root>/asset/kitchen/frying_pan/publish/geo/v001/`, makes it
+read-only, and registers it in ShotGrid as a PublishedFile. Its dependencies
+must be inside the layer's directory, or be pins into installed versions spelled
+from the production root, such as `asset/kitchen/frying_pan/publish/geo/v001/geo.usd`.
+Publishing again installs another version; nothing is replaced.
+
+`create` and `publish` write to whichever project and root the configuration
+names, and the example above is the live production. Until the next film has
+its own project, use a configuration for the inactive copy instead:
+`project = 782` and `root = "/groups/sandwich/04_temp"`.
 
 ## Checks
 

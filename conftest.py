@@ -1,11 +1,19 @@
-"""Trackers that stand in for a real one, shared by every package's tests."""
+"""Trackers and registries that stand in for real ones, shared by every package's tests."""
 
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 
 import pytest
 
-from piper.errors import TrackerError
+from piper.errors import RegistryError, TrackerError
 from piper.tracker import Asset, Shot
+
+
+def pytest_report_header() -> str:
+    # Hosts bring their own USD, so a run must say which one it tested.
+    from pxr import Usd
+
+    return "usd: " + ".".join(str(part) for part in Usd.GetVersion())
 
 
 @dataclass
@@ -53,6 +61,19 @@ class UnreachableTracker:
         raise TrackerError(self.message)
 
 
+@dataclass
+class FakeRegistry:
+    """A registry that keeps what it is asked to record, and refuses a repeat as a real one does."""
+
+    registrations: list[tuple[Asset, str, int, PurePosixPath]] = field(default_factory=list)
+
+    def register(self, asset: Asset, *, product: str, version: int, path: PurePosixPath) -> str:
+        if any(kept[:3] == (asset, product, version) for kept in self.registrations):
+            raise RegistryError(f"version {version} of {product} is already registered")
+        self.registrations.append((asset, product, version, path))
+        return str(6600 + len(self.registrations))
+
+
 def _matches(name: str, name_contains: str) -> bool:
     return name_contains.casefold() in name.casefold()
 
@@ -76,3 +97,14 @@ def tracker() -> FakeTracker:
 @pytest.fixture
 def unreachable_tracker() -> UnreachableTracker:
     return UnreachableTracker()
+
+
+@pytest.fixture
+def registry() -> FakeRegistry:
+    return FakeRegistry()
+
+
+@pytest.fixture
+def registrations(registry: FakeRegistry) -> list[tuple[Asset, str, int, PurePosixPath]]:
+    """What the ``registry`` fixture was asked to record, in order."""
+    return registry.registrations

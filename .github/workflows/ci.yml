@@ -18,8 +18,10 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run ty check
       - run: uv run pytest
+      - name: Studio tests with Maya's USD
+        run: uv run --with usd-core==24.11 python -m pytest packages/piper-studio
       - name: Core imports with no third-party packages
         run: >
-          uv run --no-project --with ./packages/piper-core
-          python -c "import piper, piper.errors, piper.find, piper.tracker"
+          uv run --isolated --no-project --with ./packages/piper-core
+          python -c "import piper, piper.errors, piper.find, piper.registry, piper.tracker"
       - run: uv build --all-packages
