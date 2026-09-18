@@ -32,6 +32,10 @@ isolate:
     uv run --isolated --no-project --with ./packages/piper-core \
         python -c "import piper, piper.errors, piper.find, piper.registry, piper.tracker"
 
+# Piper inside a real Maya. Kept out of `check`: it needs Maya on the machine.
+test-host:
+    uv run python packages/piper-studio/tests/host_maya.py
+
 build:
     uv build --all-packages
 

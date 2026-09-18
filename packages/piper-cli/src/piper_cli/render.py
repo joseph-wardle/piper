@@ -13,6 +13,8 @@ from piper.find import Matches
 from piper.tracker import Asset
 from piper_studio.create import CreateAssetResult
 from piper_studio.layout import version_name
+from piper_studio.production import PRODUCTION_ENV
+from piper_studio.profile import Profile
 
 if TYPE_CHECKING:
     # For its type only: importing the module loads USD.
@@ -91,6 +93,16 @@ def publish_result_as_text(result: "PublishResult") -> None:
     version = version_name(result.version)
     print(f"Published {result.product} {version} of {result.asset.name!r}")
     print(result.path)
+
+
+def profile_as_text(profile: Profile, overridden: str | None) -> None:
+    """Write which production later commands work in.
+
+    ``overridden`` names the configured profile that ``PIPER_PRODUCTION`` outranks.
+    """
+    print(profile.name if profile.path is None else f"{profile.name}  {profile.path}")
+    if overridden is not None:
+        print(f"{PRODUCTION_ENV} overrides the configured profile {overridden!r}")
 
 
 def _asset_json(asset: Asset) -> dict[str, str | None]:

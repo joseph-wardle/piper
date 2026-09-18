@@ -24,6 +24,17 @@ class ShotGridConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class Software:
+    """Which release of each application a production is made in.
+
+    A release, never a path: where a release is installed differs by machine, and
+    one production configuration is read from every machine.
+    """
+
+    maya: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Production:
     """One production, where it is stored, and the systems that hold it.
 
@@ -35,6 +46,7 @@ class Production:
     root: PurePosixPath
     types: tuple[str, ...]
     shotgrid: ShotGridConfig
+    software: Software = Software()
 
 
 def load_production(path: Path | None = None) -> Production:
@@ -52,6 +64,7 @@ def load_production(path: Path | None = None) -> Production:
         name=_required(document, "name", str, path),
         root=_root(document, path),
         types=_types(document, path),
+        software=_software(document, path),
         shotgrid=ShotGridConfig(
             site=_required(shotgrid, "site", str, path, prefix="shotgrid."),
             script=_required(shotgrid, "script", str, path, prefix="shotgrid."),
@@ -84,15 +97,33 @@ def _types(document: Mapping[str, object], path: Path) -> tuple[str, ...]:
     return types
 
 
+def _software(document: Mapping[str, object], path: Path) -> Software:
+    table = _optional(document, "software", dict, path) or {}
+    return Software(maya=_optional(table, "maya", str, path, prefix="software."))
+
+
 def _required(
     table: Mapping[str, object], key: str, expected: type[_T], path: Path, prefix: str = ""
 ) -> _T:
     value = table.get(key)
     if value is None:
         raise ConfigError(f"production configuration: {path} does not set {prefix}{key}")
+    return _checked(value, key, expected, path, prefix)
+
+
+def _checked(value: object, key: str, expected: type[_T], path: Path, prefix: str) -> _T:
     if not isinstance(value, expected):
         raise ConfigError(
             f"production configuration: {prefix}{key} in {path} must be "
             f"{expected.__name__}, not {type(value).__name__}"
         )
     return value
+
+
+def _optional(
+    table: Mapping[str, object], key: str, expected: type[_T], path: Path, prefix: str = ""
+) -> _T | None:
+    value = table.get(key)
+    if value is None:
+        return None
+    return _checked(value, key, expected, path, prefix)

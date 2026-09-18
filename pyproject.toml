@@ -14,8 +14,9 @@ dev = [
 ]
 
 [tool.ty.analysis]
-# USD's Python modules are compiled extensions with no type information.
-replace-imports-with-any = ["pxr", "pxr.**"]
+# USD's and Maya's Python modules are compiled extensions with no type
+# information, and Maya's are only ever present inside Maya.
+replace-imports-with-any = ["pxr", "pxr.**", "maya", "maya.**"]
 
 [tool.ruff]
 line-length = 100

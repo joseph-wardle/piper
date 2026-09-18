@@ -12,8 +12,9 @@ from piper.errors import PiperError
 from piper.find import find
 from piper.tracker import Asset, Tracker
 from piper_cli import render
+from piper_studio import launch, profile
 from piper_studio.create import PartialCreateAssetError, UnknownFolderError, create_asset
-from piper_studio.production import load_production
+from piper_studio.production import Production
 from piper_studio.registry import registry_for
 from piper_studio.tracker import tracker_for
 
@@ -31,6 +32,30 @@ app = App(
 create_app = App(name="create", help="Create production entities.")
 app.command(create_app)
 
+launch_app = App(name="launch", help="Launch an application with Piper's code loaded.")
+app.command(launch_app)
+
+
+@app.command(name="configure")
+def configure_command(name: str = "", /) -> None:
+    """Select the production later commands work in, or report the current selection.
+
+    Parameters
+    ----------
+    name
+        A production's name, or general to work outside every production.
+    """
+    if name:
+        profile.select(name)
+    overridden = profile.selected() if profile.override() is not None else None
+    render.profile_as_text(profile.active(), overridden)
+
+
+@launch_app.command(name="maya")
+def launch_maya_command() -> None:
+    """Become Maya, working in the active profile, with Piper's code loaded."""
+    launch.maya(profile.active())
+
 
 @app.command(name="find")
 def find_command(
@@ -40,7 +65,7 @@ def find_command(
     as_json: Annotated[bool, Parameter(name="--json")] = False,
 ) -> None:
     """Find assets and shots by name."""
-    production = load_production()
+    production = _active_production()
     matches = find(tracker_for(production), query)
     if as_json:
         render.as_json(matches)
@@ -75,7 +100,7 @@ def create_asset_command(
     as_json
         Write the result as JSON for another program.
     """
-    production = load_production()
+    production = _active_production()
     try:
         result = create_asset(
             tracker_for(production),
@@ -123,7 +148,7 @@ def publish_command(
     # Imported here: loading USD takes most of a second, and no other command needs it.
     from piper_studio.publish import PartialPublishError, publish
 
-    production = load_production()
+    production = _active_production()
     try:
         result = publish(
             registry_for(production),
@@ -140,6 +165,17 @@ def publish_command(
         render.publish_result_as_json(result)
     else:
         render.publish_result_as_text(result)
+
+
+def _active_production() -> Production:
+    """The active profile's production, for a command that cannot work without one."""
+    active = profile.active()
+    if active.production is None:
+        known = ", ".join(sorted(profile.PRODUCTIONS))
+        raise PiperError(
+            f"{active.name} has no production; run `piper configure` with one of: {known}"
+        )
+    return active.production
 
 
 def _asset_named(tracker: Tracker, name: str) -> Asset:

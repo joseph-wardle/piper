@@ -19,6 +19,13 @@ project = 716
 """
 
 
+@pytest.fixture(autouse=True)
+def config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A configuration directory of the test's own, so no selection of mine leaks in."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    return tmp_path / "config"
+
+
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
     """The production's storage root."""

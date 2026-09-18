@@ -83,7 +83,7 @@ def test_a_tracker_failure_is_one_readable_line_on_stderr(
     assert captured.err.splitlines() == [captured.err.rstrip("\n")]
 
 
-def test_a_missing_configuration_is_reported_the_same_way(
+def test_a_command_that_needs_a_production_says_how_to_select_one(
     run: Run,
     tracker: Tracker,
     monkeypatch: pytest.MonkeyPatch,
@@ -93,4 +93,4 @@ def test_a_missing_configuration_is_reported_the_same_way(
 
     assert run(tracker, "find", "pan") == 1
 
-    assert PRODUCTION_ENV in capsys.readouterr().err
+    assert "piper configure" in capsys.readouterr().err
