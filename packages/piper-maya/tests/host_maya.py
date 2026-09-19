@@ -1,4 +1,4 @@
-"""Checks Piper's composed environment, and opening work, inside a real Maya."""
+"""Checks Piper's composed environment, and opening and publishing work, inside a real Maya."""
 
 import os
 import subprocess
@@ -118,6 +118,7 @@ def check_host() -> int:
 
     if production is not None:
         check_open_work(production, check)
+        check_publish_work(production, check)
 
     print(f"\n{len(failures)} failed" if failures else "\nall passed")
     return 1 if failures else 0
@@ -213,6 +214,162 @@ def check_open_work(production: "Production", check: "Callable[..., None]") -> N
         check("a copied file Maya cannot save is refused in words", True, str(refusal)[-60:])
     else:
         check("a copied file Maya cannot save is refused in words", False, "saved")
+
+
+def check_publish_work(production: "Production", check: "Callable[..., None]") -> None:
+    """Publish a scene's selection the way the menu does, into this run's own production."""
+    from maya import cmds
+    from pxr import Sdf, Usd, UsdGeom, UsdShade, UsdUtils
+
+    from piper.errors import PiperError
+    from piper.registry import Registry
+    from piper.tracker import Asset
+    from piper_maya.publish import publish_work, scene_asset
+    from piper_maya.work import open_work
+    from piper_studio.context import context_named
+
+    kettle = Asset(id="303", name="Kettle", type="Prop", folder="kitchen", pipe_name="kettle")
+
+    class Assets:
+        def asset(self, id: str) -> Asset | None:
+            return kettle if id == kettle.id else None
+
+    class Records:
+        def register(self, asset: Asset, *, product: str, version: int, path: object) -> str:
+            return "1"
+
+    tracker = cast("Tracker", Assets())
+    registry = cast("Registry", Records())
+    root = Path(str(production.root))
+    (root / "asset" / "kitchen" / "kettle").mkdir(parents=True)
+    spout = root / "spout.mb"
+    cmds.file(new=True, force=True)
+    cmds.polyCone(name="spout")
+    cmds.file(rename=str(spout))
+    cmds.file(save=True, type="mayaBinary")
+
+    def refusal(action: "Callable[[], object]") -> str:
+        try:
+            action()
+        except PiperError as refused:
+            return str(refused)
+        return ""
+
+    work = open_work(tracker, production, kettle, context_named("modeling", subject="asset"))
+    assert work is not None
+    body = cmds.polyCube(name="body")[0]
+    cmds.group(body, cmds.polyCylinder(name="handle")[0], name="kettle_grp")
+    cmds.move(0, 2, 0, "kettle_grp")
+    cmds.polySphere(name="lid")
+    cmds.polyPlane(name="scratch")
+    for name, faces in (("steel", body + ".f[0:2]"), ("wood", body + ".f[3:]")):
+        shader = cmds.shadingNode("standardSurface", asShader=True, name=name + "_mtl")
+        group = cmds.sets(renderable=True, noSurfaceShader=True, empty=True, name=name + "SG")
+        cmds.connectAttr(shader + ".outColor", group + ".surfaceShader")
+        cmds.sets(faces, edit=True, forceElement=group)
+    texture = cmds.shadingNode("file", asTexture=True, name="wood_file")
+    cmds.setAttr(texture + ".fileTextureName", str(root / "wood.png"), type="string")
+    cmds.connectAttr(texture + ".outColor", "wood_mtl.baseColor")
+    cmds.file(str(spout), reference=True, namespace="spout")
+    cmds.file(save=True)
+
+    cmds.select(clear=True)
+    check(
+        "publishing with nothing selected is refused",
+        "select the geometry" in refusal(lambda: publish_work(registry, production, kettle)),
+    )
+
+    cmds.select("kettle_grp", "lid")
+    check(
+        "a saved scene at its work path names its asset", scene_asset(tracker, production) == kettle
+    )
+    result = publish_work(registry, production, kettle)
+    version = Path(str(result.path)).parent
+    check(
+        "a saved scene publishes as geo v001",
+        (result.product, result.version, result.path.name) == ("geo", 1, "geo.usd"),
+        str(result.path),
+    )
+    stage = Usd.Stage.Open(str(result.path))
+    prims = list(stage.Traverse())
+    paths = {str(prim.GetPath()) for prim in prims}
+    body_in_world = UsdGeom.Xformable(
+        stage.GetPrimAtPath("/kettle/kettle_grp/body")
+    ).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+    check(
+        "the selection, and nothing else, is under one root named for the asset, where Maya had it",
+        stage.GetDefaultPrim().GetPath() == Sdf.Path("/kettle")
+        and {"/kettle/kettle_grp/body", "/kettle/kettle_grp/handle", "/kettle/lid"} <= paths
+        and not any("scratch" in path or "spout" in path for path in paths)
+        and tuple(body_in_world.ExtractTranslation()) == (0, 2, 0),
+        f"kind={Usd.ModelAPI(stage.GetDefaultPrim()).GetKind()!r}",
+    )
+    materials = [prim for prim in prims if prim.IsA(UsdShade.Material)]
+    families = {
+        UsdGeom.Subset(prim).GetFamilyNameAttr().Get() for prim in prims if prim.IsA(UsdGeom.Subset)
+    }
+    bound = UsdShade.MaterialBindingAPI(stage.GetPrimAtPath("/kettle/kettle_grp/body/steelSG"))
+    check(
+        "materials are named slots geometry is bound to",
+        {"steelSG", "woodSG"} <= {prim.GetName() for prim in materials}
+        and families == {"materialBind"}
+        and bound.GetDirectBinding().GetMaterialPath().name == "steelSG",
+        f"{sorted(prim.GetName() for prim in materials)} {sorted(families)}",
+    )
+    spelled: list[str] = []
+    UsdUtils.ModifyAssetPaths(
+        Sdf.Layer.OpenAsAnonymous(str(result.path)), lambda path: (spelled.append(path), path)[1]
+    )
+    check(
+        "and hold no shading and no texture paths",
+        not any(prim.GetChildren() or prim.GetAuthoredProperties() for prim in materials)
+        and not any(prim.IsA(UsdShade.Shader) for prim in prims)
+        and not spelled,
+        str(spelled),
+    )
+    check(
+        "the version's source is the work file, byte for byte, and the scene is still unmodified",
+        (version / "src" / "kettle.mb").read_bytes() == work.read_bytes()
+        and not cmds.file(query=True, modified=True),
+    )
+
+    cmds.polyTorus(name="later_edit")
+    cmds.select("kettle_grp", "lid", "later_edit")
+    saved = work.stat().st_mtime_ns, work.read_bytes()
+    result = publish_work(registry, production, kettle)
+    source = Path(str(result.path)).parent / "src" / "kettle.mb"
+    check(
+        "publishing without saving leaves the work file, and the scene, as they were",
+        (work.stat().st_mtime_ns, work.read_bytes()) == saved
+        and cmds.file(query=True, modified=True)
+        and cmds.file(query=True, sceneName=True) == str(work),
+    )
+    # A prim outlives no stage, so the stage is held while the prim is asked for.
+    edited = Usd.Stage.Open(str(result.path))
+    check(
+        "and publishes the unsaved edit",
+        result.version == 2 and bool(edited.GetPrimAtPath("/kettle/later_edit")),
+    )
+    cmds.file(str(source), open=True, force=True)
+    check(
+        "its source reopens holding the edit, with the reference still a reference",
+        bool(cmds.ls("later_edit"))
+        and cmds.referenceQuery("spout:spout", isNodeReferenced=True)
+        and [Path(path) for path in cmds.file(query=True, reference=True)] == [spout],
+        str(cmds.file(query=True, reference=True)),
+    )
+    # A published source carries its work's stamp, and is not that work.
+    check(
+        "a stamped scene that is not at its work path is refused",
+        f"not Kettle's modeling work at {work}"
+        in refusal(lambda: scene_asset(tracker, production)),
+        refusal(lambda: scene_asset(tracker, production))[:70],
+    )
+    cmds.file(new=True, force=True)
+    check(
+        "a scene with no stamp is refused",
+        "is not host_check work" in refusal(lambda: scene_asset(tracker, production)),
+    )
 
 
 def run_in_host() -> int:
