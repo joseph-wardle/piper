@@ -65,7 +65,13 @@ def write(path: Path, text: str = "") -> Path:
 
 
 def run(
-    registry: Registry, root: Path, layer: Path, *, product: str = "geo", asset: Asset = PAN
+    registry: Registry,
+    root: Path,
+    layer: Path,
+    *,
+    product: str = "geo",
+    asset: Asset = PAN,
+    source: Path | None = None,
 ) -> PublishResult:
     return publish(
         registry,
@@ -73,6 +79,7 @@ def run(
         asset=asset,
         product=product,
         layer=PurePosixPath(layer),
+        source=PurePosixPath(source) if source else None,
     )
 
 
@@ -405,6 +412,33 @@ def test_a_pin_found_only_in_the_working_directory_is_refused_naming_it(
 
     with pytest.raises(PiperError, match=f"working directory, {re.escape(str(elsewhere))}, first"):
         run(registry, root, export / "entry.usda", product="entry")
+
+
+def test_the_work_file_a_layer_came_from_is_kept_in_the_versions_src(
+    registry: Registry, root: Path, export: Path, tmp_path: Path
+) -> None:
+    write(export / "geo.usda", GEO)
+    work = write(tmp_path / "work" / "frying_pan.mb", "the scene")
+
+    result = run(registry, root, export / "geo.usda", source=work)
+
+    version = Path(result.path).parent
+    installed = {str(path.relative_to(version)) for path in version.rglob("*") if path.is_file()}
+    assert installed == {"geo.usda", "src/frying_pan.mb"}
+    assert (version / "src" / "frying_pan.mb").read_bytes() == work.read_bytes()
+
+
+def test_a_work_file_that_cannot_be_copied_is_refused_and_removes_staging(
+    registry: Registry, registrations: Registrations, root: Path, export: Path, tmp_path: Path
+) -> None:
+    write(export / "geo.usda", GEO)
+    missing = tmp_path / "work" / "frying_pan.mb"
+
+    with pytest.raises(PiperError, match=re.escape(f"{missing} could not be copied")):
+        run(registry, root, export / "geo.usda", source=missing)
+
+    assert list(products(root).iterdir()) == []
+    assert registrations == []
 
 
 def test_a_registration_failure_reports_the_installed_version(

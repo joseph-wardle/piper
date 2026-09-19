@@ -20,7 +20,7 @@ from piper_studio import layout
 from piper_studio.storage import asset_directory
 
 _LAYER_SUFFIXES = (".usd", ".usda", ".usdc")
-# Reserved inside a version for the work files a DCC publish will capture.
+# Reserved inside a version for the work file a publish captures.
 _SOURCE = "src"
 _INSTALL_ATTEMPTS = 5
 
@@ -65,8 +65,13 @@ def publish(
     asset: Asset,
     product: str,
     layer: PurePosixPath,
+    source: PurePosixPath | None = None,
 ) -> PublishResult:
-    """Install ``layer`` and the files it depends on as the product's next version; register it."""
+    """Install ``layer`` and the files it depends on as the product's next version; register it.
+
+    ``source`` is the work file ``layer`` was exported from. The version keeps a
+    copy of that one file in ``src/``.
+    """
     exported = Path(layer).resolve()
     product_root = _product_root(root, asset, product)
     _check_exported(exported)
@@ -79,6 +84,9 @@ def publish(
         raise _refusal(exported, [f"{staging} could not be created ({exc.strerror})"]) from exc
     try:
         _copy(exported.parent, copies, staging)
+        if source is not None:
+            (staging / _SOURCE).mkdir()
+            shutil.copyfile(source, staging / _SOURCE / source.name)
     except OSError as exc:
         problem = f"{exc.filename} could not be copied into {staging} ({exc.strerror})"
         raise _refusal(exported, [problem], _discard(staging)) from exc
