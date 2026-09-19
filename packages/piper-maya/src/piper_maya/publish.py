@@ -16,7 +16,7 @@ from piper_studio.production import Production
 from piper_studio.publish import PublishResult, publish
 from piper_studio.storage import asset_directory
 
-_PRODUCT = "geo"
+PRODUCT = "geo"
 _REMEDY = "open the asset's work with Piper > Open Work…, then import this scene into it"
 
 
@@ -51,6 +51,15 @@ def selection() -> list[str]:
     return cmds.ls(selection=True)
 
 
+def materials() -> list[str]:
+    """The shading groups the selected geometry is in. Each publishes as a slot."""
+    shapes = cmds.ls(selection=True, dagObjects=True, shapes=True, noIntermediate=True)
+
+    return sorted(
+        {group for shape in shapes for group in cmds.listSets(object=shape, type=1) or []}
+    )
+
+
 def publish_work(registry: Registry, production: Production, asset: Asset) -> PublishResult:
     """Publish the selection as ``asset``'s geometry, with the scene as its source.
 
@@ -59,15 +68,21 @@ def publish_work(registry: Registry, production: Production, asset: Asset) -> Pu
     have written it; the work file is never saved or changed here.
     """
     selection()
+    # MayaUSD logs an error for a root prim it cannot name, and exports without one.
+    if not Sdf.Path.IsValidIdentifier(asset.pipe_name or ""):
+        raise PiperError(
+            f"cannot publish {asset.name}: its pipe name, {asset.pipe_name!r}, begins with a "
+            "digit, and a USD prim's name cannot; tell a TD, since a pipe name never changes"
+        )
     scene = Path(cmds.file(query=True, sceneName=True))
-    cmds.loadPlugin("mayaUsdPlugin", quiet=True)
     # A cleanup that fails must not replace the result of a publish that happened.
     with tempfile.TemporaryDirectory(
         prefix="piper_publish_", ignore_cleanup_errors=True
     ) as directory:
-        layer = Path(directory) / f"{_PRODUCT}.usd"
+        layer = Path(directory) / f"{PRODUCT}.usd"
         source = scene
         try:
+            cmds.loadPlugin("mayaUsdPlugin", quiet=True)
             cmds.mayaUSDExport(
                 file=str(layer),
                 selection=True,
@@ -90,7 +105,7 @@ def publish_work(registry: Registry, production: Production, asset: Asset) -> Pu
             registry,
             root=production.root,
             asset=asset,
-            product=_PRODUCT,
+            product=PRODUCT,
             layer=PurePosixPath(layer),
             source=PurePosixPath(source),
         )
@@ -103,8 +118,8 @@ def _empty_materials(path: Path) -> None:
     """
     layer = Sdf.Layer.FindOrOpen(str(path))
     stage = Usd.Stage.Open(layer)
-    materials = [prim.GetPath() for prim in stage.Traverse() if prim.IsA(UsdShade.Material)]
-    for material in materials:
+    material_paths = [prim.GetPath() for prim in stage.Traverse() if prim.IsA(UsdShade.Material)]
+    for material in material_paths:
         spec = layer.GetPrimAtPath(material)
         for child in list(spec.nameChildren):
             del spec.nameChildren[child.name]

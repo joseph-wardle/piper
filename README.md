@@ -19,7 +19,7 @@ production. `piper find` reads assets and shots from the real tracker,
 | `packages/piper-studio` | `piper-studio` | `piper_studio` | Studio conventions, production config, provider selection |
 | `packages/piper-shotgrid` | `piper-shotgrid` | `piper_shotgrid` | ShotGrid behind Piper's contracts |
 | `packages/piper-cli` | `piper-cli` | `piper_cli` | The `piper` command |
-| `packages/piper-maya` | `piper-maya` | `piper_maya` | Piper inside Maya: its menu, and opening work |
+| `packages/piper-maya` | `piper-maya` | `piper_maya` | Piper inside Maya: its menu, and opening and publishing work |
 
 `piper-core` is imported in-process by DCC integrations, so it targets the
 2025 VFX Reference Platform python version `3.11.x`. This project will update 
@@ -122,10 +122,17 @@ piper open fry modeling            # a part of the name only one asset has
 `<root>/asset/kitchen/frying_pan/work/modeling/frying_pan.mb`, creating and saving
 it the first time, with Maya's project set to that directory. Inside Maya,
 **Piper ▸ Open Work…** does the same from a list. The scene is stamped with its
-production, asset, and context, which is how publishing from Maya will know what
+production, asset, and context, which is how publishing from Maya knows what
 it is. A file copied there from another asset becomes this asset's work: Piper
 restamps it, saves it, and says so. Anything else in the directory is the
 artist's, Maya's `workspace.mel` and incremental saves included.
+
+**Piper ▸ Publish…** publishes the selected geometry as the asset's next `geo`
+version, under one root prim named for the asset. Each material is kept as a
+named slot the geometry is bound to, without its shading. The version keeps the
+scene it came from in `src/`. A scene with unsaved changes can be saved first or
+published as it is, which leaves the work file untouched. Only an asset's own
+work file publishes: import anything else into it first.
 
 ```
 piper launch maya

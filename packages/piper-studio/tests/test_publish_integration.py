@@ -1,4 +1,5 @@
 import contextlib
+import getpass
 import multiprocessing
 import os
 import shutil
@@ -272,7 +273,7 @@ def test_pinned_components_publish_compose_and_register_in_the_write_project(
         found = shotgrid().find(
             "PublishedFile",
             [["entity", "is", {"type": "Asset", "id": int(asset.id)}]],
-            ["project", "code", "name", "version_number", "path"],
+            ["project", "code", "name", "version_number", "path", "description"],
         )
         records = {str(record["id"]): record for record in cast("list[dict[str, Any]]", found)}
         assert len(records) == len(published)
@@ -282,6 +283,7 @@ def test_pinned_components_publish_compose_and_register_in_the_write_project(
             assert (record["name"], record["version_number"]) == (result.product, result.version)
             assert record["code"] == f"{result.product} v{result.version:03d}"
             assert record["path"]["url"] == Path(result.path).as_uri()
+            assert record["description"] == f"published by {getpass.getuser()}"
 
         with pytest.raises(RegistryError, match="already registered"):
             registry.register(asset, product="entry", version=2, path=entry_2.path)

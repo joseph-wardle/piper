@@ -218,6 +218,8 @@ def check_open_work(production: "Production", check: "Callable[..., None]") -> N
 
 def check_publish_work(production: "Production", check: "Callable[..., None]") -> None:
     """Publish a scene's selection the way the menu does, into this run's own production."""
+    import dataclasses
+
     from maya import cmds
     from pxr import Sdf, Usd, UsdGeom, UsdShade, UsdUtils
 
@@ -280,6 +282,11 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
     )
 
     cmds.select("kettle_grp", "lid")
+    numbered = dataclasses.replace(kettle, pipe_name="3d_kettle")
+    check(
+        "an asset whose pipe name cannot name a root prim is refused",
+        "begins with a digit" in refusal(lambda: publish_work(registry, production, numbered)),
+    )
     check(
         "a saved scene at its work path names its asset", scene_asset(tracker, production) == kettle
     )
@@ -350,6 +357,91 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         "and publishes the unsaved edit",
         result.version == 2 and bool(edited.GetPrimAtPath("/kettle/later_edit")),
     )
+
+    # The menu's handler, with the artist's answers scripted: no dialog can be shown here.
+    from unittest import mock
+
+    from piper_maya import ui
+
+    shown: list[tuple[str, list[str]]] = []
+    answers: list[str] = []
+
+    def answer_dialog(*, message: str, button: list[str], **_: object) -> str:
+        shown.append((message, button))
+        return answers.pop(0) if answers else "OK"
+
+    def versions() -> list[str]:
+        return sorted(path.name for path in version.parent.iterdir())
+
+    with (
+        mock.patch.object(ui, "tracker_for", lambda _: tracker),
+        mock.patch.object(ui, "registry_for", lambda _: registry),
+        mock.patch.object(cmds, "confirmDialog", answer_dialog),
+    ):
+        # `body` was the default material's before its faces were assigned, and Maya
+        # leaves that connection behind. Naming it would promise a slot the export does not write.
+        cmds.select("body")
+        answers[:] = ["Cancel"]
+        ui.show_publish()
+        check(
+            "Publish… says what an unsaved scene would publish, and Cancel publishes nothing",
+            shown[0][1] == ["Save and Publish", "Publish Without Saving", "Cancel"]
+            and "Publish to Kettle, geo?" in shown[0][0]
+            and "Selected: body\n" in shown[0][0]
+            and shown[0][0].endswith("Materials: steelSG, woodSG")
+            and len(shown) == 1
+            and versions() == ["v001", "v002"],
+            shown[0][0].replace("\n", " | "),
+        )
+        cmds.select("kettle_grp", "lid", "later_edit")
+        answers[:] = ["Save and Publish"]
+        ui.show_publish()
+        published = Usd.Stage.Open(str(version.parent / "v003" / "geo.usd"))
+        slots = sorted(p.GetName() for p in published.Traverse() if p.IsA(UsdShade.Material))
+        check(
+            "Save and Publish saves the work file, publishes it, and says which version it made",
+            not cmds.file(query=True, modified=True)
+            and (version.parent / "v003" / "src" / "kettle.mb").read_bytes() == work.read_bytes()
+            and "Published geo v003 of Kettle" in shown[-1][0],
+            shown[-1][0].replace("\n", " | "),
+        )
+        check(
+            "the materials it named are the slots it published",
+            len(slots) == 3 and shown[-2][0].endswith(f"Materials: {', '.join(slots)}"),
+            str(slots),
+        )
+        answers[:] = ["Cancel"]
+        ui.show_publish()
+        check(
+            "a saved scene is asked nothing about saving: Publish or Cancel",
+            shown[-1][1] == ["Publish", "Cancel"] and versions()[-1] == "v003",
+        )
+        cmds.setAttr("lid.translateY", 1)
+        work.chmod(0o444)
+        saved = work.read_bytes()
+        answers[:] = ["Save and Publish"]
+        ui.show_publish()
+        check(
+            "a save Maya refuses is shown in Maya's words, and publishes nothing",
+            "Maya could not save the scene (" in shown[-1][0] and versions()[-1] == "v003",
+            shown[-1][0][:90],
+        )
+        answers[:] = ["Publish Without Saving"]
+        ui.show_publish()
+        work.chmod(0o644)
+        check(
+            "and Publish Without Saving then publishes, leaving the work file as it was",
+            "Published geo v004 of Kettle" in shown[-1][0]
+            and work.read_bytes() == saved
+            and cmds.file(query=True, modified=True),
+        )
+        cmds.select(clear=True)
+        ui.show_publish()
+        check(
+            "a refusal is shown to the artist, and nothing is asked",
+            "select the geometry" in shown[-1][0] and shown[-1][1] == ["OK"],
+        )
+
     cmds.file(str(source), open=True, force=True)
     check(
         "its source reopens holding the edit, with the reference still a reference",

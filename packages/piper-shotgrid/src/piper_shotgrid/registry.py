@@ -4,6 +4,7 @@ ShotGrid field names, filter syntax, entity dictionaries, and exceptions do not
 leave this module.
 """
 
+import getpass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -60,6 +61,8 @@ class ShotGridRegistry:
             "version_number": version,
             "code": code,
             "path": {"url": Path(path).as_uri(), "name": path.name},
+            # `created_by` is the script for every publish, so the OS login is recorded here.
+            "description": f"published by {getpass.getuser()}",
         }
         try:
             created = self._shotgrid.create("PublishedFile", data, ["id"])
