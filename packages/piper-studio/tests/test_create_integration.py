@@ -28,7 +28,7 @@ ROOT = Path("/groups/sandwich/04_temp")
 TYPE = "Set Piece"
 
 
-def test_creates_in_the_write_project_with_crew_writable_directories_and_refuses_a_repeat() -> None:
+def test_creates_in_the_write_project_and_refuses_a_repeat() -> None:
     tracker = ShotGridTracker(
         site=SITE, script=SCRIPT, key=os.environ["PIPER_SHOTGRID_KEY"], project=WRITE_PROJECT
     )
@@ -59,11 +59,7 @@ def test_creates_in_the_write_project_with_crew_writable_directories_and_refuses
         assert result.asset.pipe_name == f"piper_test_{run}"
         assert tracker.asset(result.asset.id) == result.asset
 
-        group = ROOT.stat().st_gid
-        for directory in (ROOT / "asset", ROOT / "asset" / folder, Path(result.directory)):
-            info = directory.stat()
-            assert info.st_gid == group
-            assert info.st_mode & 0o070 == 0o070
+        assert Path(result.directory).is_dir()
 
         # Refused as a duplicate, not a mismatch: the type and folder read back exactly.
         with pytest.raises(PiperError, match="already exists at"):

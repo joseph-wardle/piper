@@ -6,7 +6,7 @@ from piper.errors import PiperError
 from piper.tracker import Asset
 from piper_studio import layout
 from piper_studio.context import Context
-from piper_studio.storage import asset_directory, make_directories
+from piper_studio.storage import asset_directory
 
 
 def prepare_work(*, root: PurePosixPath, asset: Asset, context: Context) -> Path:
@@ -20,7 +20,7 @@ def prepare_work(*, root: PurePosixPath, asset: Asset, context: Context) -> Path
         )
     file = Path(layout.work_file(PurePosixPath(asset_directory(root, asset)), context))
     try:
-        make_directories(file.parent)
+        file.parent.mkdir(parents=True)
     except OSError as exc:
         # Another artist opening the same work may have made it first.
         if not file.parent.is_dir():

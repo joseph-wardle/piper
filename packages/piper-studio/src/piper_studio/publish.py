@@ -17,7 +17,7 @@ from piper.errors import PiperError, RegistryError
 from piper.registry import Registry
 from piper.tracker import Asset
 from piper_studio import layout
-from piper_studio.storage import asset_directory, make_directories
+from piper_studio.storage import asset_directory
 
 _LAYER_SUFFIXES = (".usd", ".usda", ".usdc")
 # Reserved inside a version for the work files a DCC publish will capture.
@@ -74,7 +74,7 @@ def publish(
 
     staging = product_root / f".tmp_{secrets.token_hex(4)}"
     try:
-        make_directories(staging)
+        staging.mkdir(parents=True)
     except OSError as exc:
         raise _refusal(exported, [f"{staging} could not be created ({exc.strerror})"]) from exc
     try:
@@ -87,7 +87,6 @@ def publish(
         raise _refusal(exported, problems, _discard(staging))
 
     try:
-        _lock(staging)
         version = _install(exported, product_root, staging)
     except OSError as exc:
         # `_install` returns whenever the rename happened, so staging is not a version.
@@ -197,19 +196,17 @@ def _unresolved_or_dirty(dependencies: _Dependencies) -> list[str]:
 
 
 def _is_pinnable(root: PurePosixPath, file: str) -> bool:
-    """Whether ``file`` is a locked file of an installed version, which a layer may pin."""
+    """Whether ``file`` is a file of an installed version, which a layer may pin."""
     real = PurePosixPath(os.path.realpath(file))
     version = layout.version_directory(PurePosixPath(os.path.realpath(root)), real)
-    if version is None or real.relative_to(version).parts[0] == _SOURCE:
-        return False
-    return not any(Path(path).stat().st_mode & 0o222 for path in (real, version))
+    return version is not None and real.relative_to(version).parts[0] != _SOURCE
 
 
 def _outside_problem(root: PurePosixPath, export: Path, file: str) -> str:
     if Path(file).is_relative_to(root):
         return (
             f"{file} is neither inside {export} nor pinnable: a pin names a file outside "
-            f"{_SOURCE}/ in an installed version, and both must be read-only"
+            f"{_SOURCE}/ in an installed version"
         )
     # ArDefaultResolver looks for a path spelled from the production root in the
     # working directory before it looks in the production.
@@ -259,16 +256,6 @@ def _copy(export: Path, files: list[PurePosixPath], staging: Path) -> None:
         shutil.copyfile(export / relative, target)
 
 
-def _lock(directory: Path) -> None:
-    """Make every file and directory read-only, deepest first."""
-    for parent, directories, files in os.walk(directory, topdown=False):
-        for name in files:
-            Path(parent, name).chmod(0o444)
-        for name in directories:
-            Path(parent, name).chmod(0o555)
-    directory.chmod(0o555)
-
-
 def _install(exported: Path, product_root: Path, staging: Path) -> int:
     """Rename staging onto the next free version number, and return the number."""
     staged_inode = staging.stat().st_ino
@@ -315,10 +302,6 @@ def _inode(path: Path) -> int | None:
 def _discard(staging: Path) -> str:
     """Remove staging; when it cannot be removed, a note naming where it was left."""
     try:
-        staging.chmod(0o700)
-        for parent, directories, _ in os.walk(staging):
-            for name in directories:
-                Path(parent, name).chmod(0o700)
         shutil.rmtree(staging)
     except OSError as exc:
         return f"\nstaging left at {staging} ({exc.strerror})"

@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 from piper.errors import PiperError
 from piper.tracker import Asset, Tracker
 from piper_studio.layout import asset_root, slug
-from piper_studio.storage import make_directories, unusable_pipe_name
+from piper_studio.storage import unusable_pipe_name
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,7 +107,7 @@ def create_asset(
     pipe_name_given = existing is None or not existing.pipe_name
     if not directory_exists:
         try:
-            make_directories(Path(directory))
+            Path(directory).mkdir(parents=True)
         except OSError as exc:
             unfinished = CreateAssetResult(
                 asset, directory, asset_created, pipe_name_given, directory_created=False

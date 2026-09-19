@@ -1,5 +1,3 @@
-import os
-import stat
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
@@ -224,22 +222,3 @@ def test_a_storage_failure_reports_what_was_and_was_not_created(
     message = str(raised.value)
     assert "'Toaster' is in the tracker" in message
     assert f"{result.directory} could not be created (Permission denied)" in message
-
-
-def test_new_directories_copy_their_parents_mode_not_the_umask(
-    tracker: Tracker, root: Path
-) -> None:
-    # The group is copied too; only real storage with a second group can show it.
-    root.chmod(0o770)
-    assets = root / "asset"
-    assets.mkdir()
-    assets.chmod(0o750)
-    umask = os.umask(0o022)
-    try:
-        result = create(tracker, root)
-    finally:
-        os.umask(umask)
-
-    assert stat.S_IMODE(assets.stat().st_mode) == 0o750
-    for directory in (assets / "kitchen", Path(result.directory)):
-        assert stat.S_IMODE(directory.stat().st_mode) == 0o750

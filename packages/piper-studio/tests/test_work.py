@@ -1,4 +1,3 @@
-import stat
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
@@ -21,16 +20,13 @@ def root(tmp_path: Path) -> Path:
     return root
 
 
-def test_work_is_one_file_in_a_directory_made_like_its_assets(root: Path) -> None:
+def test_work_is_one_file_in_a_directory_made_for_its_context(root: Path) -> None:
     pan = root / "asset" / "kitchen" / "frying_pan"
-    pan.chmod(0o750)
 
     file = prepare_work(root=PurePosixPath(root), asset=PAN, context=MODELING)
 
     assert file == pan / "work" / "modeling" / "frying_pan.mb"
-    assert not file.exists()
-    for directory in (pan / "work", file.parent):
-        assert stat.S_IMODE(directory.stat().st_mode) == 0o750
+    assert file.parent.is_dir() and not file.exists()
     # The terminal prepares work before Maya starts, and Maya prepares it again.
     assert prepare_work(root=PurePosixPath(root), asset=PAN, context=MODELING) == file
 

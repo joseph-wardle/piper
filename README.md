@@ -102,10 +102,10 @@ piper publish "Frying Pan" geo ./export/geo.usd
 ```
 
 `publish` copies the layer and every file it depends on into the product's
-next version, `<root>/asset/kitchen/frying_pan/publish/geo/v001/`, makes it
-read-only, and registers it in ShotGrid as a PublishedFile. Its dependencies
-must be inside the layer's directory, or be pins into installed versions spelled
-from the production root, such as `asset/kitchen/frying_pan/publish/geo/v001/geo.usd`.
+next version, `<root>/asset/kitchen/frying_pan/publish/geo/v001/`, and
+registers it in ShotGrid as a PublishedFile. Its dependencies must be inside the
+layer's directory, or be pins into installed versions spelled from the
+production root, such as `asset/kitchen/frying_pan/publish/geo/v001/geo.usd`.
 Publishing again installs another version; nothing is replaced.
 
 `create` and `publish` write to whichever project and root the configuration

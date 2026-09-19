@@ -23,7 +23,6 @@ from piper_studio import publish as publish_module
 from piper_studio.create import create_asset
 from piper_studio.layout import asset_root, product_root
 from piper_studio.publish import PartialPublishError, PublishResult, publish
-from piper_studio.storage import make_directories
 
 pytestmark = pytest.mark.integration
 
@@ -88,7 +87,7 @@ def asset(run_id: str) -> Iterator[Asset]:
         folder=folder,
         pipe_name=f"piper_test_{run_id}",
     )
-    make_directories(Path(asset_root(PurePosixPath(ROOT), folder, asset.pipe_name or "")))
+    Path(asset_root(PurePosixPath(ROOT), folder, asset.pipe_name or "")).mkdir(parents=True)
     try:
         yield asset
     finally:
@@ -320,11 +319,7 @@ def remove_from_shotgrid(name: str) -> None:
 
 
 def remove_directories(folder: str) -> None:
-    """Remove a test folder, unlocking the versions installed in it."""
-    directory = ROOT / "asset" / folder
-    for parent, directories, _ in os.walk(directory):
-        for name in directories:
-            Path(parent, name).chmod(0o700)
-    shutil.rmtree(directory, ignore_errors=True)
+    """Remove a test folder and the versions installed in it."""
+    shutil.rmtree(ROOT / "asset" / folder, ignore_errors=True)
     with contextlib.suppress(OSError):
         (ROOT / "asset").rmdir()

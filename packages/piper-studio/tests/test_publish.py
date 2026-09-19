@@ -2,7 +2,6 @@ import errno
 import os
 import re
 import shutil
-import stat
 import textwrap
 from pathlib import Path, PurePosixPath
 
@@ -81,11 +80,7 @@ def products(root: Path, product: str = "geo") -> Path:
     return root / "asset" / "kitchen" / "frying_pan" / "publish" / product
 
 
-def mode(path: Path) -> int:
-    return stat.S_IMODE(path.stat().st_mode)
-
-
-def test_installs_the_layer_and_what_it_depends_on_as_a_locked_first_version(
+def test_installs_the_layer_and_what_it_depends_on_as_the_first_version(
     registry: Registry, registrations: Registrations, root: Path, export: Path, tmp_path: Path
 ) -> None:
     write(
@@ -127,8 +122,6 @@ def test_installs_the_layer_and_what_it_depends_on_as_a_locked_first_version(
     installed = {str(path.relative_to(version)) for path in version.rglob("*") if path.is_file()}
     assert installed == {"geo.usda", "looks/wood.usda", "tex/wood.1001.png", "tex/wood.1002.png"}
     assert not any(path.is_symlink() for path in version.rglob("*"))
-    assert {mode(path) for path in version.rglob("*") if path.is_file()} == {0o444}
-    assert {mode(path) for path in (version, *version.rglob("*")) if path.is_dir()} == {0o555}
     assert registrations == [(PAN, "geo", 1, result.path)]
     assert result.record_id is not None
     assert [path.name for path in products(root).iterdir()] == ["v001"]
@@ -261,26 +254,16 @@ def test_an_export_inside_a_publish_directory_is_refused(
 
 
 @pytest.mark.parametrize(
-    ("version", "file_mode", "directory_mode"),
+    "version",
     [
-        pytest.param("v001/src", 0o444, 0o555, id="into-src"),
-        pytest.param("v001", 0o644, 0o555, id="writable-file"),
-        pytest.param("v001", 0o444, 0o755, id="writable-version"),
-        pytest.param(".tmp_1a2b3c4d", 0o444, 0o555, id="into-staging"),
+        pytest.param("v001/src", id="into-src"),
+        pytest.param(".tmp_1a2b3c4d", id="into-staging"),
     ],
 )
-def test_a_pin_must_be_a_locked_file_of_an_installed_version(
-    registry: Registry,
-    root: Path,
-    export: Path,
-    version: str,
-    file_mode: int,
-    directory_mode: int,
+def test_a_pin_must_be_a_published_file_of_an_installed_version(
+    registry: Registry, root: Path, export: Path, version: str
 ) -> None:
     pinned = write(products(root) / version / "geo.usda", GEO)
-    pinned.chmod(file_mode)
-    for directory in (pinned.parent, products(root) / version.split("/")[0]):
-        directory.chmod(directory_mode)
     pin = pinned.relative_to(root)
     write(
         export / "entry.usda",
