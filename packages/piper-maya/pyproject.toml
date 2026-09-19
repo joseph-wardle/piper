@@ -1,0 +1,17 @@
+[project]
+name = "piper-maya"
+version = "0.1.0"
+description = "Piper inside Maya: its menu, and opening an asset's work."
+requires-python = ">=3.11"
+license = "Apache-2.0"
+# Everything named here, and everything it needs, is importable inside Maya:
+# `just sync` builds this package's own environment for Maya's PYTHONPATH.
+# Pure Python only, and nothing Maya brings itself, such as `pxr` or `PySide6`.
+dependencies = [
+    "piper-core",
+    "piper-studio",
+]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"

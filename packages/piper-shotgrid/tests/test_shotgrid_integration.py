@@ -86,6 +86,19 @@ def test_assets_carry_their_type_and_folder(every_asset: tuple[Asset, ...]) -> N
     assert len(folders) > 1
 
 
+def test_an_asset_is_read_back_by_its_id_within_its_own_project_only(
+    tracker: ShotGridTracker, every_asset: tuple[Asset, ...]
+) -> None:
+    known = every_asset[0]
+    elsewhere = ShotGridTracker(
+        site=SITE, script=SCRIPT, key=os.environ["PIPER_SHOTGRID_KEY"], project=WRITE_PROJECT
+    )
+
+    assert tracker.asset(known.id) == known
+    assert elsewhere.asset(known.id) is None
+    assert tracker.asset("not-an-id") is None
+
+
 def test_nothing_matches_a_nonsense_query(tracker: ShotGridTracker) -> None:
     assert tracker.find_assets("zzz-no-such-asset-zzz") == ()
     assert tracker.find_shots("zzz-no-such-shot-zzz") == ()
@@ -106,7 +119,12 @@ def test_the_site_refuses_a_type_it_does_not_offer_and_creates_nothing() -> None
     )
 
     with pytest.raises(TrackerError, match=r"cannot create asset .* not a valid list value"):
-        tracker.create_asset("Piper Rejected Type", type="Not A Type", folder="piper_test")
+        tracker.create_asset(
+            "Piper Rejected Type",
+            type="Not A Type",
+            folder="piper_test",
+            pipe_name="piper_rejected_type",
+        )
 
     assert tracker.find_assets("Piper Rejected Type") == ()
 

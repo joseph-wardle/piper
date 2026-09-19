@@ -49,6 +49,7 @@ def test_creates_the_asset_and_its_directory_named_by_slugs(tracker: Tracker, ro
 
     assert tracker.find_assets("Toaster") == (result.asset,)
     assert (result.asset.type, result.asset.folder) == ("Prop", "kitchen")
+    assert result.asset.pipe_name == "mr_yoons_toaster"
     assert result.directory == PurePosixPath(root, "asset", "kitchen", "mr_yoons_toaster")
     assert Path(result.directory).is_dir()
     assert (result.asset_created, result.directory_created) == (True, True)
@@ -132,13 +133,53 @@ def test_an_asset_missing_its_directory_is_finished(tracker: Tracker, root: Path
     assert Path(result.directory).is_dir()
 
 
-def test_a_directory_missing_its_asset_is_finished(tracker: Tracker, root: Path) -> None:
+def test_a_directory_with_no_asset_is_never_adopted(tracker: Tracker, root: Path) -> None:
     (root / "asset" / "kitchen" / "toaster").mkdir(parents=True)
 
-    result = create(tracker, root, "Toaster")
+    with pytest.raises(PiperError, match="never adopts a directory"):
+        create(tracker, root, "Toaster")
 
-    assert tracker.find_assets("Toaster") == (result.asset,)
-    assert (result.asset_created, result.directory_created) == (True, False)
+    assert tracker.find_assets("Toaster") == ()
+
+
+def test_an_asset_without_a_pipe_name_is_given_one_beside_the_directory_it_has(
+    tracker: Tracker, root: Path
+) -> None:
+    (root / "asset" / "kitchen" / "kitchen_counter").mkdir(parents=True)
+
+    result = create(tracker, root, "Kitchen Counter", type="Set Piece")
+
+    assert result.asset.pipe_name == "kitchen_counter"
+    assert tracker.asset("7703") == result.asset
+    assert (result.asset_created, result.pipe_name_given, result.directory_created) == (
+        False,
+        True,
+        False,
+    )
+
+
+def renamed_toaster(tracker: Tracker, root: Path) -> Asset:
+    """An asset created as Toaster and since renamed, which a pipe name outlives."""
+    (root / "asset" / "kitchen" / "toaster").mkdir(parents=True)
+    return tracker.create_asset("Bread Toaster", type="Prop", folder="kitchen", pipe_name="toaster")
+
+
+def test_a_renamed_asset_keeps_the_paths_its_pipe_name_gave_it(
+    tracker: Tracker, root: Path
+) -> None:
+    renamed_toaster(tracker, root)
+
+    with pytest.raises(PiperError, match=r"already exists at .*/kitchen/toaster$"):
+        create(tracker, root, "Bread Toaster")
+
+
+def test_a_name_whose_paths_another_asset_holds_is_refused(tracker: Tracker, root: Path) -> None:
+    renamed = renamed_toaster(tracker, root)
+
+    with pytest.raises(PiperError, match="the pipe name asset 'Bread Toaster' already has"):
+        create(tracker, root, "Toaster")
+
+    assert tracker.find_assets("Toaster") == (renamed,)
 
 
 @pytest.mark.parametrize(("type", "folder"), [("Prop", "shop"), ("Character", "kitchen")])
@@ -156,7 +197,7 @@ def test_an_existing_asset_is_never_moved_or_reclassified(
 def test_a_tracker_failure_leaves_storage_untouched(
     tracker: Tracker, root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def refuse(name: str, *, type: str, folder: str) -> Asset:
+    def refuse(name: str, *, type: str, folder: str, pipe_name: str) -> Asset:
         raise TrackerError(f"shotgrid: cannot create asset {name!r}")
 
     monkeypatch.setattr(tracker, "create_asset", refuse)

@@ -58,7 +58,11 @@ def create_asset_result_as_json(result: CreateAssetResult, error: str | None = N
     payload: dict[str, object] = {
         "asset": _asset_json(result.asset),
         "directory": str(result.directory),
-        "created": {"tracker": result.asset_created, "directory": result.directory_created},
+        "created": {
+            "tracker": result.asset_created,
+            "pipe_name": result.pipe_name_given,
+            "directory": result.directory_created,
+        },
     }
     if error is not None:
         payload["error"] = error
@@ -70,6 +74,8 @@ def create_asset_result_as_text(result: CreateAssetResult) -> None:
     asset = result.asset
     verb = "Created" if result.asset_created else "Found"
     print(f"{verb} asset {asset.name!r} ({asset.type}, in {asset.folder})")
+    if result.pipe_name_given and not result.asset_created:
+        print(f"Named its paths {asset.pipe_name!r}")
     verb = "Created" if result.directory_created else "Found"
     print(f"{verb} {result.directory}")
 
@@ -106,7 +112,13 @@ def profile_as_text(profile: Profile, overridden: str | None) -> None:
 
 
 def _asset_json(asset: Asset) -> dict[str, str | None]:
-    return {"id": asset.id, "name": asset.name, "type": asset.type, "folder": asset.folder}
+    return {
+        "id": asset.id,
+        "name": asset.name,
+        "type": asset.type,
+        "folder": asset.folder,
+        "pipe_name": asset.pipe_name,
+    }
 
 
 def _nothing_found(query: str) -> str:

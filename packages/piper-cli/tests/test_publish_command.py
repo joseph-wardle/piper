@@ -53,7 +53,13 @@ def test_json_carries_the_version_its_root_layer_and_its_record(
     assert run(tracker, "publish", "Frying Pan", "geo", str(layer), "--json") == 0
 
     assert json.loads(capsys.readouterr().out) == {
-        "asset": {"id": "7701", "name": "Frying Pan", "type": "Prop", "folder": "kitchen"},
+        "asset": {
+            "id": "7701",
+            "name": "Frying Pan",
+            "type": "Prop",
+            "folder": "kitchen",
+            "pipe_name": "frying_pan",
+        },
         "product": "geo",
         "version": 1,
         "path": installed(root),

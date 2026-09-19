@@ -30,9 +30,15 @@ def test_json_carries_the_asset_its_directory_and_what_was_created(
     assert run(tracker, *TOASTER, "--json") == 0
 
     assert json.loads(capsys.readouterr().out) == {
-        "asset": {"id": "9003", "name": "Toaster", "type": "Prop", "folder": "kitchen"},
+        "asset": {
+            "id": "9003",
+            "name": "Toaster",
+            "type": "Prop",
+            "folder": "kitchen",
+            "pipe_name": "toaster",
+        },
         "directory": str(root / "asset" / "kitchen" / "toaster"),
-        "created": {"tracker": True, "directory": True},
+        "created": {"tracker": True, "pipe_name": True, "directory": True},
     }
 
 
@@ -67,6 +73,6 @@ def test_a_partial_create_as_json_still_writes_the_record(
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["asset"]["name"] == "Toaster"
-    assert payload["created"] == {"tracker": True, "directory": False}
+    assert payload["created"] == {"tracker": True, "pipe_name": True, "directory": False}
     assert "Permission denied" in payload["error"]
     assert captured.err.startswith("piper: ")

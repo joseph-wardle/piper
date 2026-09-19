@@ -3,6 +3,7 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 piper-core = { workspace = true }
+piper-maya = { workspace = true }
 piper-shotgrid = { workspace = true }
 piper-studio = { workspace = true }
 
@@ -15,8 +16,8 @@ dev = [
 
 [tool.ty.analysis]
 # USD's and Maya's Python modules are compiled extensions with no type
-# information, and Maya's are only ever present inside Maya.
-replace-imports-with-any = ["pxr", "pxr.**", "maya", "maya.**"]
+# information, and Maya's, its Qt among them, are only ever present inside Maya.
+replace-imports-with-any = ["pxr", "pxr.**", "maya", "maya.**", "PySide6"]
 
 [tool.ruff]
 line-length = 100
@@ -33,4 +34,4 @@ markers = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["piper", "piper_cli", "piper_shotgrid", "piper_studio"]
+known-first-party = ["piper", "piper_cli", "piper_maya", "piper_shotgrid", "piper_studio"]

@@ -17,7 +17,7 @@ from piper_studio.publish import PartialPublishError, PublishResult, publish
 
 Registrations = list[tuple[Asset, str, int, PurePosixPath]]
 
-PAN = Asset(id="7701", name="Frying Pan", type="Prop", folder="kitchen")
+PAN = Asset(id="7701", name="Frying Pan", type="Prop", folder="kitchen", pipe_name="frying_pan")
 
 GEO = """
     #usda 1.0
@@ -175,14 +175,7 @@ def test_a_pinned_version_composes_from_a_copy_of_the_production(
         pytest.param(PAN, "geo", "geo.abc", "not a .usd, .usda, or .usdc layer", id="not-usd"),
         pytest.param(PAN, "geo", "missing.usda", "does not exist", id="no-layer"),
         pytest.param(
-            Asset(id="7702", name="Pan Lid", type=None, folder=None),
-            "geo",
-            "geo.usda",
-            "it needs a name and a folder",
-            id="asset-without-folder",
-        ),
-        pytest.param(
-            Asset(id="7704", name="Toaster", type="Prop", folder="kitchen"),
+            Asset(id="7704", name="Toaster", type="Prop", folder="kitchen", pipe_name="toaster"),
             "geo",
             "geo.usda",
             "has no directory at",

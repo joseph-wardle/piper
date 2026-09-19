@@ -1,6 +1,6 @@
 """Trackers and registries that stand in for real ones, shared by every package's tests."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import PurePosixPath
 
 import pytest
@@ -34,10 +34,19 @@ class FakeTracker:
     def find_shots(self, name_contains: str) -> tuple[Shot, ...]:
         return tuple(shot for shot in self.shots if _matches(shot.name, name_contains))
 
-    def create_asset(self, name: str, *, type: str, folder: str) -> Asset:
-        asset = Asset(id=str(9000 + len(self.assets)), name=name, type=type, folder=folder)
+    def asset(self, id: str) -> Asset | None:
+        return next((asset for asset in self.assets if asset.id == id), None)
+
+    def create_asset(self, name: str, *, type: str, folder: str, pipe_name: str) -> Asset:
+        id = str(9000 + len(self.assets))
+        asset = Asset(id=id, name=name, type=type, folder=folder, pipe_name=pipe_name)
         self.assets.append(asset)
         return asset
+
+    def set_pipe_name(self, asset: Asset, pipe_name: str) -> Asset:
+        named = replace(asset, pipe_name=pipe_name)
+        self.assets[self.assets.index(asset)] = named
+        return named
 
 
 @dataclass(frozen=True)
@@ -57,7 +66,13 @@ class UnreachableTracker:
     def find_shots(self, name_contains: str) -> tuple[Shot, ...]:
         raise TrackerError(self.message)
 
-    def create_asset(self, name: str, *, type: str, folder: str) -> Asset:
+    def asset(self, id: str) -> Asset | None:
+        raise TrackerError(self.message)
+
+    def create_asset(self, name: str, *, type: str, folder: str, pipe_name: str) -> Asset:
+        raise TrackerError(self.message)
+
+    def set_pipe_name(self, asset: Asset, pipe_name: str) -> Asset:
         raise TrackerError(self.message)
 
 
@@ -80,12 +95,23 @@ def _matches(name: str, name_contains: str) -> bool:
 
 @pytest.fixture
 def tracker() -> FakeTracker:
-    """A small production with both kinds, mixed case, and absent details."""
+    """A small production with both kinds, mixed case, and absent details.
+
+    Only the frying pan has a pipe name, as an asset Piper created would.
+    """
     return FakeTracker(
         assets=[
-            Asset(id="7701", name="Frying Pan", type="Prop", folder="kitchen"),
-            Asset(id="7702", name="Pan Lid", type=None, folder=None),
-            Asset(id="7703", name="Kitchen Counter", type="Set Piece", folder="kitchen"),
+            Asset(
+                id="7701", name="Frying Pan", type="Prop", folder="kitchen", pipe_name="frying_pan"
+            ),
+            Asset(id="7702", name="Pan Lid", type=None, folder=None, pipe_name=None),
+            Asset(
+                id="7703",
+                name="Kitchen Counter",
+                type="Set Piece",
+                folder="kitchen",
+                pipe_name=None,
+            ),
         ],
         shots=[
             Shot(id="8801", name="SQ010_SH0020", sequence="SQ010"),

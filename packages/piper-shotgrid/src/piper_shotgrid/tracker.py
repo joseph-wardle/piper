@@ -5,6 +5,7 @@ leave this module.
 """
 
 import http.client
+from dataclasses import replace
 from typing import Any, cast
 
 import shotgun_api3
@@ -13,7 +14,7 @@ from shotgun_api3.lib import httplib2
 from piper.errors import TrackerError
 from piper.tracker import Asset, Shot
 
-_ASSET_FIELDS = ["id", "code", "sg_asset_type", "sg_subdirectory"]
+_ASSET_FIELDS = ["id", "code", "sg_asset_type", "sg_subdirectory", "sg_pipe_name"]
 _SHOT_FIELDS = ["id", "code", "sg_sequence"]
 
 # `shotgun_api3` re-raises whatever its transport raised, so `ShotgunError`
@@ -58,15 +59,26 @@ class ShotGridTracker:
         )
         return tuple(sorted(shots, key=_by_name))
 
-    # No project parameter, on purpose: the script key can write to every
-    # project on the site, so the project fixed at construction is the only
-    # thing keeping a create out of another production.
-    def create_asset(self, name: str, *, type: str, folder: str) -> Asset:
+    def asset(self, id: str) -> Asset | None:
+        if not id.isdecimal():
+            return None
+        filters = [["project", "is", self._project_link()], ["id", "is", int(id)]]
+        try:
+            entity = self._shotgrid.find_one("Asset", filters, _ASSET_FIELDS)
+        except REQUEST_FAILURES as exc:
+            raise TrackerError(
+                f"shotgrid: cannot read asset {id} of project {self._project} "
+                f"from {self._site} ({exc})"
+            ) from exc
+        return _asset(cast("dict[str, Any]", entity)) if entity else None
+
+    def create_asset(self, name: str, *, type: str, folder: str, pipe_name: str) -> Asset:
         data = {
             "project": self._project_link(),
             "code": name,
             "sg_asset_type": type,
             "sg_subdirectory": folder,
+            "sg_pipe_name": pipe_name,
         }
         try:
             entity = self._shotgrid.create("Asset", data, _ASSET_FIELDS)
@@ -76,6 +88,16 @@ class ShotGridTracker:
                 f"on {self._site} ({exc})"
             ) from exc
         return _asset(entity)
+
+    def set_pipe_name(self, asset: Asset, pipe_name: str) -> Asset:
+        try:
+            self._shotgrid.update("Asset", int(asset.id), {"sg_pipe_name": pipe_name})
+        except REQUEST_FAILURES as exc:
+            raise TrackerError(
+                f"shotgrid: cannot give asset {asset.name!r} the pipe name {pipe_name!r} "
+                f"in project {self._project} on {self._site} ({exc})"
+            ) from exc
+        return replace(asset, pipe_name=pipe_name)
 
     def _find(
         self, entity_type: str, fields: list[str], name_contains: str
@@ -104,6 +126,7 @@ def _asset(entity: dict[str, Any]) -> Asset:
         name=entity["code"] or "",
         type=entity["sg_asset_type"] or None,
         folder=entity["sg_subdirectory"] or None,
+        pipe_name=entity["sg_pipe_name"] or None,
     )
 
 

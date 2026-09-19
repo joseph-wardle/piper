@@ -55,6 +55,9 @@ def test_creates_in_the_write_project_with_crew_writable_directories_and_refuses
         # The tracker only finds within its own project, so finding it proves where it went.
         assert tracker.find_assets(name) == (result.asset,)
         assert (result.asset.type, result.asset.folder) == (TYPE, folder)
+        # The pipe name reads back by id as it was written, which opening work depends on.
+        assert result.asset.pipe_name == f"piper_test_{run}"
+        assert tracker.asset(result.asset.id) == result.asset
 
         group = ROOT.stat().st_gid
         for directory in (ROOT / "asset", ROOT / "asset" / folder, Path(result.directory)):

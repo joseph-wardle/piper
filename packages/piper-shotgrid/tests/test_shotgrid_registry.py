@@ -9,7 +9,7 @@ from piper.errors import RegistryError
 from piper.tracker import Asset
 from piper_shotgrid.registry import ShotGridRegistry
 
-PAN = Asset(id="1234", name="Frying Pan", type="Prop", folder="kitchen")
+PAN = Asset(id="1234", name="Frying Pan", type="Prop", folder="kitchen", pipe_name="frying_pan")
 PATH = PurePosixPath("/production/asset/kitchen/frying_pan/publish/geo/v004/geo.usd")
 
 

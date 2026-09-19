@@ -81,8 +81,14 @@ def export(run_id: str) -> Iterator[Path]:
 def asset(run_id: str) -> Iterator[Asset]:
     """An asset directory in scratch storage, with no tracker entity behind it."""
     folder = f"piper_test_{run_id}"
-    asset = Asset(id="0", name=f"Piper Test {run_id}", type=TYPE, folder=folder)
-    make_directories(Path(asset_root(PurePosixPath(ROOT), folder, asset.name)))
+    asset = Asset(
+        id="0",
+        name=f"Piper Test {run_id}",
+        type=TYPE,
+        folder=folder,
+        pipe_name=f"piper_test_{run_id}",
+    )
+    make_directories(Path(asset_root(PurePosixPath(ROOT), folder, asset.pipe_name or "")))
     try:
         yield asset
     finally:
@@ -104,7 +110,8 @@ def publish_to_scratch(
 
 
 def products(asset: Asset, product: str) -> Path:
-    return Path(product_root(PurePosixPath(ROOT), asset.folder or "", asset.name, product))
+    pan = asset_root(PurePosixPath(ROOT), asset.folder or "", asset.pipe_name or "")
+    return Path(product_root(pan, product))
 
 
 def publish_when_all_are_ready(barrier: threading.Barrier, asset: Asset, layer: Path) -> int:

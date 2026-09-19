@@ -46,8 +46,14 @@ def test_json_carries_the_record_fields_exactly(
 
     assert json.loads(capsys.readouterr().out) == {
         "assets": [
-            {"id": "7701", "name": "Frying Pan", "type": "Prop", "folder": "kitchen"},
-            {"id": "7702", "name": "Pan Lid", "type": None, "folder": None},
+            {
+                "id": "7701",
+                "name": "Frying Pan",
+                "type": "Prop",
+                "folder": "kitchen",
+                "pipe_name": "frying_pan",
+            },
+            {"id": "7702", "name": "Pan Lid", "type": None, "folder": None, "pipe_name": None},
         ],
         "shots": [{"id": "8802", "name": "pan_test", "sequence": None}],
     }

@@ -1,8 +1,11 @@
 default:
     @just --list
 
+# The second environment is the one Maya imports from: only what piper-maya's
+# manifest names, so nothing in it can shadow a package Maya brings.
 sync:
     uv sync
+    UV_PROJECT_ENVIRONMENT=packages/piper-maya/.venv uv sync --package piper-maya --no-dev --locked
 
 format:
     uv run ruff format .
@@ -34,7 +37,7 @@ isolate:
 
 # Piper inside a real Maya. Kept out of `check`: it needs Maya on the machine.
 test-host:
-    uv run python packages/piper-studio/tests/host_maya.py
+    uv run python packages/piper-maya/tests/host_maya.py
 
 build:
     uv build --all-packages

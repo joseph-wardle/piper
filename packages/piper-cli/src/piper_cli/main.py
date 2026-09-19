@@ -13,10 +13,12 @@ from piper.find import find
 from piper.tracker import Asset, Tracker
 from piper_cli import render
 from piper_studio import launch, profile
+from piper_studio.context import context_named
 from piper_studio.create import PartialCreateAssetError, UnknownFolderError, create_asset
 from piper_studio.production import Production
 from piper_studio.registry import registry_for
 from piper_studio.tracker import tracker_for
+from piper_studio.work import prepare_work
 
 # `result_action` off: Cyclopts otherwise calls `sys.exit` for the command, and
 # `main` owns Piper's exit codes. `negative` off: every flag is off unless given,
@@ -55,6 +57,25 @@ def configure_command(name: str = "", /) -> None:
 def launch_maya_command() -> None:
     """Become Maya, working in the active profile, with Piper's code loaded."""
     launch.maya(profile.active())
+
+
+@app.command(name="open")
+def open_command(asset: str, context: str, /) -> None:
+    """Become Maya, with an asset's work in a context open.
+
+    Parameters
+    ----------
+    asset
+        The asset's name, or a part of it no other asset's name has.
+    context
+        The kind of work, such as modeling.
+    """
+    production = _active_production()
+    chosen = context_named(context, subject="asset")
+    found = _asset_matching(tracker_for(production), asset)
+    prepare_work(root=production.root, asset=found, context=chosen)
+    print(f"Opening {chosen.name} work on {found.name!r}")
+    launch.maya(profile.active(), work=(found, chosen))
 
 
 @app.command(name="find")
@@ -189,6 +210,22 @@ def _asset_named(tracker: Tracker, name: str) -> Asset:
     raise PiperError(
         f"no asset is named {name!r}" + (f" (names containing it: {similar})" if similar else "")
     )
+
+
+def _asset_matching(tracker: Tracker, name: str) -> Asset:
+    """The asset ``name`` names whatever its case, or the only asset whose name contains it."""
+    found = tracker.find_assets(name)
+    named = [asset for asset in found if asset.name.casefold() == name.casefold()]
+    if len(named) == 1:
+        return named[0]
+    if named:
+        raise PiperError(f"{len(named)} assets are named {name!r}; rename all but one")
+    if len(found) == 1:
+        return found[0]
+    if found:
+        names = ", ".join(repr(asset.name) for asset in found)
+        raise PiperError(f"{len(found)} assets have names containing {name!r}: {names}")
+    raise PiperError(f"no asset has a name containing {name!r}")
 
 
 def main(tokens: Sequence[str] | None = None) -> int:

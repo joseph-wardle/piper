@@ -3,6 +3,8 @@
 import re
 from pathlib import PurePosixPath
 
+from piper_studio.context import Context
+
 _APOSTROPHES = re.compile(r"['\u2019]")
 _SEPARATORS = re.compile(r"[^a-z0-9]+")
 _VERSION = re.compile(r"v([0-9]{3,})")
@@ -17,14 +19,19 @@ def slug(name: str) -> str:
     return _SEPARATORS.sub("_", lowered).strip("_")
 
 
-def asset_root(root: PurePosixPath, folder: str, name: str) -> PurePosixPath:
+def asset_root(root: PurePosixPath, folder: str, pipe_name: str) -> PurePosixPath:
     """The directory that holds everything belonging to one asset."""
-    return root / "asset" / slug(folder) / slug(name)
+    return root / "asset" / slug(folder) / slug(pipe_name)
 
 
-def product_root(root: PurePosixPath, folder: str, name: str, product: str) -> PurePosixPath:
+def product_root(asset_root: PurePosixPath, product: str) -> PurePosixPath:
     """The directory that holds every version of one of an asset's products."""
-    return asset_root(root, folder, name) / "publish" / product
+    return asset_root / "publish" / product
+
+
+def work_file(asset_root: PurePosixPath, context: Context) -> PurePosixPath:
+    """The one file an asset's work in ``context`` is kept in, named for the asset."""
+    return asset_root / "work" / context.name / f"{asset_root.name}.{context.extension}"
 
 
 def version_name(number: int) -> str:

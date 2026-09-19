@@ -7,8 +7,9 @@ OpenUSD, scheduler, and review systems keep the authority they already have.
 
 Right now it is a sandbox for me to test workflows for my capstone film
 production. `piper find` reads assets and shots from the real tracker,
-`piper create asset` creates an asset there and its directory in storage, and
-`piper publish` installs an immutable version of an exported USD product.
+`piper create asset` creates an asset there and its directory in storage,
+`piper publish` installs an immutable version of an exported USD product, and
+`piper open` starts Maya on an asset's work.
 
 ## Layout
 
@@ -18,6 +19,7 @@ production. `piper find` reads assets and shots from the real tracker,
 | `packages/piper-studio` | `piper-studio` | `piper_studio` | Studio conventions, production config, provider selection |
 | `packages/piper-shotgrid` | `piper-shotgrid` | `piper_shotgrid` | ShotGrid behind Piper's contracts |
 | `packages/piper-cli` | `piper-cli` | `piper_cli` | The `piper` command |
+| `packages/piper-maya` | `piper-maya` | `piper_maya` | Piper inside Maya: its menu, and opening work |
 
 `piper-core` is imported in-process by DCC integrations, so it targets the
 2025 VFX Reference Platform python version `3.11.x`. This project will update 
@@ -25,11 +27,15 @@ as soon as the software used at BYU target the 2026 target of `3.13.x`.
 
 ## Setup
 
-Requires [uv](https://docs.astral.sh/uv/).
+Requires [uv](https://docs.astral.sh/uv/) and [just](https://just.systems/).
 
 ```
-uv sync
+just sync
 ```
+
+This builds two environments from one lock: the project's own, and
+`packages/piper-maya/.venv`, which holds only what `piper-maya` names and is the
+one directory of third-party packages Maya imports from.
 
 ## Use
 
@@ -85,8 +91,11 @@ piper create asset "Toaster" --type "Set Piece" --folder garage --new-folder
 ```
 
 The first creates the asset in ShotGrid, then `<root>/asset/kitchen/frying_pan`.
-A folder no asset is in yet must be started with `--new-folder`. Running a
-create again finishes whichever half is missing.
+A folder no asset is in yet must be started with `--new-folder`. The directory is
+named by the asset's pipe name, the slug of its name, written to ShotGrid once and
+never changed: renaming the asset later moves nothing. A create never adopts a
+directory that is already there. Running a create again finishes whatever is
+missing: the pipe name of an asset Piper did not create, or the directory.
 
 ```
 piper publish "Frying Pan" geo ./export/geo.usd
@@ -103,6 +112,20 @@ Publishing again installs another version; nothing is replaced.
 names, and the example above is the live production. Until the next film has
 its own project, point `PIPER_PRODUCTION` at a configuration for the inactive
 copy instead: `project = 782` and `root = "/groups/sandwich/04_temp"`.
+
+```
+piper open "Frying Pan" modeling
+piper open fry modeling            # a part of the name only one asset has
+```
+
+`open` becomes Maya on the asset's one modeling file,
+`<root>/asset/kitchen/frying_pan/work/modeling/frying_pan.mb`, creating and saving
+it the first time, with Maya's project set to that directory. Inside Maya,
+**Piper ▸ Open Work…** does the same from a list. The scene is stamped with its
+production, asset, and context, which is how publishing from Maya will know what
+it is. A file copied there from another asset becomes this asset's work: Piper
+restamps it, saves it, and says so. Anything else in the directory is the
+artist's, Maya's `workspace.mel` and incremental saves included.
 
 ```
 piper launch maya

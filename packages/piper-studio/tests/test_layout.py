@@ -5,7 +5,6 @@ import pytest
 
 from piper_studio.layout import (
     asset_root,
-    product_root,
     slug,
     version_directory,
     version_name,
@@ -40,12 +39,6 @@ def test_no_folder_or_name_reaches_outside_the_root() -> None:
     directory = asset_root(PurePosixPath("/production"), "../../etc", "../passwd")
 
     assert directory == PurePosixPath("/production/asset/etc/passwd")
-
-
-def test_a_product_lives_in_its_assets_publish_directory() -> None:
-    directory = product_root(PurePosixPath("/production"), "Kitchen", "Frying Pan", "geo")
-
-    assert directory == PurePosixPath("/production/asset/kitchen/frying_pan/publish/geo")
 
 
 @pytest.mark.parametrize(

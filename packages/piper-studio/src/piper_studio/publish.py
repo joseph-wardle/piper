@@ -17,7 +17,7 @@ from piper.errors import PiperError, RegistryError
 from piper.registry import Registry
 from piper.tracker import Asset
 from piper_studio import layout
-from piper_studio.storage import make_directories
+from piper_studio.storage import asset_directory, make_directories
 
 _LAYER_SUFFIXES = (".usd", ".usda", ".usdc")
 # Reserved inside a version for the work files a DCC publish will capture.
@@ -107,23 +107,13 @@ def publish(
 
 
 def _product_root(root: PurePosixPath, asset: Asset, product: str) -> Path:
-    folder = asset.folder or ""
-    if not (layout.slug(asset.name) and layout.slug(folder)):
-        raise PiperError(
-            f"asset {asset.name!r} (folder: {asset.folder or 'none'}) has no directory to "
-            "publish into: it needs a name and a folder"
-        )
-    directory = layout.asset_root(root, folder, asset.name)
-    if not Path(directory).is_dir():
-        raise PiperError(
-            f"asset {asset.name!r} has no directory at {directory}; create the asset to make it"
-        )
+    directory = asset_directory(root, asset)
     if layout.slug(product) != product:
         raise PiperError(
             f"cannot name a product {product!r}: a product is named in lowercase letters, "
             f"digits, and underscores, such as {layout.slug(product) or 'geo'!r}"
         )
-    return Path(layout.product_root(root, folder, asset.name, product))
+    return Path(layout.product_root(PurePosixPath(directory), product))
 
 
 def _check_exported(exported: Path) -> None:
