@@ -212,7 +212,7 @@ def check_open_work(production: "Production", check: "Callable[..., None]") -> N
 
     from piper.errors import PiperError
     from piper.tracker import Asset
-    from piper_houdini.publish import pin
+    from piper_houdini.publish import scene_pin
     from piper_houdini.work import OUTPUT, open_work, scene_stamp
     from piper_studio.context import context_named
 
@@ -223,7 +223,6 @@ def check_open_work(production: "Production", check: "Callable[..., None]") -> N
         def asset(self, id: str) -> Asset | None:
             return next((asset for asset in (pan, pot) if asset.id == id), None)
 
-    # Opening work asks a tracker for nothing but an asset by its id.
     tracker = cast("Tracker", Assets())
     lookdev = context_named("lookdev", subject="asset")
     root = Path(str(production.root))
@@ -289,8 +288,8 @@ def check_open_work(production: "Production", check: "Callable[..., None]") -> N
         )
         check(
             "the scene's pin is the version the sublayer loads, and the parm loading it",
-            pin(production.root, pan) == (1, "/stage/asset/filepath1"),
-            str(pin(production.root, pan)),
+            scene_pin(production.root, pan) == (1, "/stage/asset/filepath1"),
+            str(scene_pin(production.root, pan)),
         )
 
         hou.node("/stage").createNode("null", "kept")
@@ -336,6 +335,7 @@ def check_open_work(production: "Production", check: "Callable[..., None]") -> N
 
 def check_publish_work(production: "Production", check: "Callable[..., None]") -> None:
     """Publish the output's layer the way the menu does, into this run's own production."""
+    import shutil
     from unittest import mock
 
     import hou
@@ -345,11 +345,17 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
     from piper.registry import Registry
     from piper.tracker import Asset
     from piper_houdini import ui
-    from piper_houdini.publish import copy_scene, pin, save_layer, scene_asset, slots
+    from piper_houdini.publish import (
+        publish_work,
+        save_layer,
+        scene_asset,
+        scene_pin,
+        slots,
+        surfaces,
+    )
     from piper_houdini.work import OUTPUT, open_work
     from piper_studio import compose
     from piper_studio.context import context_named
-    from piper_studio.publish import publish
 
     kettle = Asset(id="303", name="Kettle", type="Prop", folder="kitchen", pipe_name="kettle")
 
@@ -392,8 +398,10 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
     check(
         "a saved scene at its work path names its asset", scene_asset(tracker, production) == kettle
     )
+    named = slots(production.root, kettle, compose.current_pins(production.root, kettle)[1])
+    check("the slots are the pinned geo's, in its order", named == ["woodSG", "metalSG"])
     with tempfile.TemporaryDirectory() as directory:
-        layer = save_layer(Path(directory), kettle)
+        layer = save_layer(Path(directory), kettle, named)
         saved = Sdf.Layer.OpenAsAnonymous(str(layer))
         check(
             "the output saves the materials alone, as overs on the slots",
@@ -407,37 +415,25 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         )
         check(
             "and each slot is reported with what it was given",
-            slots(layer, kettle) == {"woodSG": ["ri", "mtlx", "preview"], "metalSG": []},
-            str(slots(layer, kettle)),
+            surfaces(layer, kettle, named) == {"woodSG": ["ri", "mtlx", "preview"], "metalSG": []},
+            str(surfaces(layer, kettle, named)),
         )
         before = work.stat().st_mtime_ns, work.read_bytes()
-        source = copy_scene(Path(directory))
-        check(
-            "the scene is copied with its unsaved changes, and the work file is left alone",
-            source == Path(directory) / "kettle.hipnc"
-            and source.is_file()
-            and (work.stat().st_mtime_ns, work.read_bytes()) == before
-            and hou.hipFile.path() == str(work),
-            hou.hipFile.path(),
-        )
-        result = publish(
-            registry,
-            root=production.root,
-            asset=kettle,
-            product="mtl",
-            layer=PurePosixPath(layer),
-            source=PurePosixPath(source),
-        )
+        result = publish_work(registry, production, kettle, layer, saved=False)
+    published = Path(str(result.component.path)).parent
     check(
-        "publishing it makes mtl v001 and asset v002, pinning both components, and current",
+        "publishing without saving makes mtl v001 and asset v002, pinning both, current, "
+        "with a copy of the unsaved scene as the source and the work file left alone",
         (result.component.product, result.component.version) == ("mtl", 1)
         and result.asset_version is not None
         and result.asset_version.version == 2
         and dict(result.pins) == {"geo": 1, "mtl": 1}
-        and result.current,
+        and result.current
+        and (published / "src" / "kettle.hipnc").is_file()
+        and (work.stat().st_mtime_ns, work.read_bytes()) == before
+        and hou.hipFile.path() == str(work),
         str(result),
     )
-    published = Path(str(result.component.path)).parent
     entry = compose.entry_path(production.root, kettle, 2)
     composed = Usd.Stage.Open(str(entry), Ar.DefaultResolverContext([str(root)]), Usd.Stage.LoadAll)
     body = composed.GetPrimAtPath("/kettle/geo/render/body")
@@ -451,14 +447,12 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         and surface[0].GetShaderId() == "PxrSurface",
         str(surface[0].GetPrim().GetPath()) if surface[0] else "no ri surface",
     )
-    check("and keeps the scene it came from", (published / "src" / "kettle.hipnc").is_file())
-
     asset_node = hou.node("/stage/asset")
     layer_break = hou.node("/stage/break_mtl")
     layer_break.destroy()
     materials.setInput(0, asset_node)
     with tempfile.TemporaryDirectory() as directory:
-        refused = refusal(lambda: save_layer(Path(directory), kettle))
+        refused = refusal(lambda: save_layer(Path(directory), kettle, named))
         check(
             "without the Layer Break, the asset would go out as mtl, so it is refused by name",
             "keep a Layer Break" in refused,
@@ -473,7 +467,7 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         junk.setInput(0, materials)
         output = hou.node(OUTPUT)
         output.setInput(0, junk)
-        refused = refusal(lambda: save_layer(Path(directory), kettle))
+        refused = refusal(lambda: save_layer(Path(directory), kettle, named))
         check(
             "a prim outside the materials is refused by path",
             "authors /kettle/geo, outside /kettle/mtl" in refused,
@@ -484,10 +478,10 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
 
         stray = materials.createNode("subnet", "wood")
         stray.setMaterialFlag(True)
-        refused = refusal(lambda: save_layer(Path(directory), kettle))
+        refused = refusal(lambda: save_layer(Path(directory), kettle, named))
         check(
             "a material named for no slot is refused, and the slots are named",
-            "defines /kettle/mtl/wood, which is not a slot of Kettle" in refused
+            "defines wood under /kettle/mtl, which is not a slot of the geo" in refused
             and refused.endswith("(woodSG, metalSG)"),
             refused[-90:],
         )
@@ -496,7 +490,7 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         output.setName("elsewhere")
         check(
             "a scene with no output to publish from is refused",
-            f"has no {OUTPUT}" in refusal(lambda: save_layer(Path(directory), kettle)),
+            f"has no {OUTPUT}" in refusal(lambda: save_layer(Path(directory), kettle, named)),
         )
         output.setName("OUT_mtl")
 
@@ -505,14 +499,12 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
     check(
         "a scene loading two asset versions is refused, naming both",
         "it loads 2: /stage/again/filepath1 (v002), /stage/asset/filepath1 (v001)"
-        in refusal(lambda: pin(production.root, kettle)),
-        refusal(lambda: pin(production.root, kettle)),
+        in refusal(lambda: scene_pin(production.root, kettle)),
+        refusal(lambda: scene_pin(production.root, kettle)),
     )
     second.destroy()
 
     publish_geo(root, kettle, 2)
-
-    # The menu's handler, with the artist's answers scripted: no window can be shown here.
 
     asked: list[tuple[list[str], dict[str, tuple[list[int], int]], list[str]]] = []
     answers: list[tuple[str, dict[str, int]] | None] = []
@@ -535,12 +527,11 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         check(
             "Publish… says what the scene loads, what is current, and what each slot gets",
             lines[0] == "Publish to Kettle, mtl?"
-            and "This scene loads asset v001 (/stage/asset/filepath1); current is v003." in lines
-            and "Current v003 pins geo v002, mtl v001." in lines
+            and "This scene loads asset v001 (/stage/asset/filepath1), pinning geo v001." in lines
+            and "Current is asset v003, pinning geo v002, mtl v001." in lines
             and lines[-2:] == ["woodSG: ri, mtlx, preview", "metalSG: nothing"],
             " | ".join(lines),
         )
-        # `hasUnsavedChanges` is documented to be True in hython, so this is the unsaved branch.
         check(
             "offers the other component's versions, starting on current's pin",
             offered == {"geo": ([1, 2], 2)}
@@ -549,14 +540,19 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
             f"{offered} {buttons}",
         )
         saved = work.stat().st_mtime_ns
+        shutil.rmtree(work.parent / "backup", ignore_errors=True)
         answers[:] = [("Save and Publish", {"geo": 2})]
         ui.show_publish()
+        second = Path(str(result.component.path)).parent.with_name("v002") / "src" / "kettle.hipnc"
         check(
-            "Save and Publish saves the work file, publishes, and says what it made and pinned",
+            "Save and Publish saves the work file, publishes it as the source, and says what it "
+            "made and pinned",
             work.stat().st_mtime_ns != saved
             and versions("mtl") == [1, 2]
+            and second.read_bytes() == work.read_bytes()
+            and not (work.parent / "backup").exists()
             and compose.pins(production.root, kettle, 4) == {"geo": 2, "mtl": 2}
-            and "Published mtl v002 of Kettle" in shown.messages[-1]
+            and "Published mtl v002 of 'Kettle'" in shown.messages[-1]
             and "asset v004 pins geo v002 and mtl v002, and is current" in shown.messages[-1],
             shown.messages[-1].replace("\n", " | "),
         )
@@ -570,12 +566,22 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
             and "asset v005 pins geo v001 and mtl v003, and is current" in shown.messages[-1],
             shown.messages[-1].replace("\n", " | "),
         )
+        work.chmod(0o444)
+        answers[:] = [("Save and Publish", {"geo": 2})]
+        ui.show_publish()
+        work.chmod(0o644)
+        check(
+            "a save Houdini refuses is shown in Houdini's words, and publishes nothing",
+            "Houdini could not save the scene (" in shown.messages[-1]
+            and versions("mtl") == [1, 2, 3],
+            shown.messages[-1][:90],
+        )
         hou.node(OUTPUT).setName("elsewhere")
         ui.show_publish()
         check(
             "a refusal is shown to the artist, and nothing is asked",
             f"has no {OUTPUT}" in shown.messages[-1]
-            and len(asked) == 3
+            and len(asked) == 4
             and versions("mtl") == [1, 2, 3],
             shown.messages[-1][:80],
         )
@@ -585,7 +591,6 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         "its source reopens holding the materials",
         hou.node("/stage/materials/woodSG/rman") is not None,
     )
-    # A published source carries its work's stamp, and is not that work.
     check(
         "a stamped scene that is not at its work path is refused",
         f"not Kettle's lookdev work at {work}" in refusal(lambda: scene_asset(tracker, production)),
@@ -595,6 +600,19 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
     check(
         "a scene with no stamp is refused",
         "is not host_check work" in refusal(lambda: scene_asset(tracker, production)),
+    )
+    with (
+        mock.patch.object(ui, "tracker_for", lambda _: tracker),
+        mock.patch.object(hou, "ui", shown, create=True),
+    ):
+        ui.open_launched_work(kettle.id, "lookdev")
+    check(
+        "opening work that loads an older asset version than current says so",
+        hou.hipFile.path() == str(work)
+        and shown.messages[-1]
+        == "This scene loads asset v001 (/stage/asset/filepath1), pinning geo v001.\n"
+        "Current is asset v005, pinning geo v001, mtl v003.",
+        shown.messages[-1].replace("\n", " | "),
     )
     check(
         "a publish left nothing in Houdini's output network",
@@ -607,7 +625,7 @@ def run_in_host() -> int:
     """Compose Houdini's environment for a production and run this file under ``hython`` in it."""
     from piper.errors import PiperError
     from piper_studio.launch import (
-        compose,
+        environment,
         houdini_executable,
         houdini_variables,
         working_directory,
@@ -628,7 +646,7 @@ def run_in_host() -> int:
             return 1
         return subprocess.call(
             [str(hython), str(Path(__file__).resolve())],
-            env=compose(os.environ, houdini_variables(profile)),
+            env=environment(os.environ, houdini_variables(profile)),
             cwd=working_directory(profile),
         )
 

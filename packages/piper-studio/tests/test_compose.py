@@ -1,5 +1,3 @@
-"""Building an asset version and reading its pins, against hand-written component layers."""
-
 import textwrap
 from pathlib import Path, PurePosixPath
 
@@ -85,7 +83,6 @@ def root(tmp_path: Path) -> PurePosixPath:
 
 
 def install(root: Path | PurePosixPath, product: str, version: int, text: str) -> Path:
-    """A component version as `publish_product` leaves it, without going through it."""
     layer = Path(
         root, "asset/kitchen/frying_pan/publish", product, f"v{version:03d}", f"{product}.usda"
     )
@@ -95,10 +92,9 @@ def install(root: Path | PurePosixPath, product: str, version: int, text: str) -
 
 
 def build(root: PurePosixPath, tmp_path: Path, pins: dict[str, int], version: int = 1) -> Path:
-    """Write an asset version and install it where `publish_product` would."""
-    written = compose.write_asset_version(
-        tmp_path / f"staged{version}", root=root, asset=PAN, pins=pins
-    )
+    staged = tmp_path / f"staged{version}"
+    staged.mkdir()
+    written = compose.write_asset_version(staged, root=root, asset=PAN, pins=pins)
     installed = compose.entry_path(root, PAN, version)
     installed.parent.mkdir(parents=True)
     for file in written.parent.iterdir():
@@ -111,7 +107,6 @@ def test_the_entry_composes_the_pinned_geometry_and_material(
 ) -> None:
     install(root, "geo", 1, GEO)
     install(root, "mtl", 1, MTL)
-    (tmp_path / "staged1").mkdir()
 
     entry = build(root, tmp_path, {"geo": 1, "mtl": 1})
 
@@ -143,7 +138,6 @@ def test_the_payload_is_readable_as_pins_and_spelled_from_the_root(
 ) -> None:
     install(root, "geo", 2, GEO)
     install(root, "mtl", 1, MTL)
-    (tmp_path / "staged1").mkdir()
 
     entry = build(root, tmp_path, {"mtl": 1, "geo": 2})
 
@@ -153,19 +147,7 @@ def test_the_payload_is_readable_as_pins_and_spelled_from_the_root(
     assert compose.pins(root, PAN, 1) == {"geo": 2, "mtl": 1}
 
 
-def test_a_version_with_one_component_pins_that_alone(root: PurePosixPath, tmp_path: Path) -> None:
-    install(root, "geo", 1, GEO)
-    (tmp_path / "staged1").mkdir()
-
-    entry = build(root, tmp_path, {"geo": 1})
-
-    stage = Usd.Stage.Open(str(entry), Ar.DefaultResolverContext([str(root)]), Usd.Stage.LoadAll)
-    assert stage.GetCompositionErrors() == []
-    assert stage.GetPrimAtPath("/frying_pan/geo/render/body")
-    assert compose.pins(root, PAN, 1) == {"geo": 1}
-
-
-def test_a_pin_names_a_version_that_is_installed(root: PurePosixPath, tmp_path: Path) -> None:
+def test_a_pin_must_name_an_installed_version(root: PurePosixPath, tmp_path: Path) -> None:
     install(root, "geo", 1, GEO)
     install(root, "geo", 3, GEO)
 

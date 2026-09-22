@@ -12,26 +12,6 @@ from piper.tracker import Asset, Tracker
 
 Run = Callable[..., int]
 
-GEO = """#usda 1.0
-(
-    defaultPrim = "pan"
-)
-
-def Xform "pan"
-{
-}
-"""
-
-
-@pytest.fixture
-def layer(root: Path, tmp_path: Path) -> Path:
-    """An exported layer, beside the directory of the asset it belongs to."""
-    (root / "asset" / "kitchen" / "frying_pan").mkdir(parents=True)
-    path = tmp_path / "export" / "geo.usda"
-    path.parent.mkdir()
-    path.write_text(GEO, encoding="utf-8")
-    return path
-
 
 def installed(root: Path, product: str = "geo", name: str = "geo.usda") -> str:
     publish = root / "asset" / "kitchen" / "frying_pan" / "publish"
@@ -78,13 +58,13 @@ def test_json_carries_both_versions_their_pins_and_what_is_current(
     }
 
 
-def test_with_pins_another_components_version_and_is_spelled_product_equals_version(
+def test_with_pins_a_named_version_and_is_spelled_product_equals_version(
     run: Run, tracker: Tracker, root: Path, layer: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert run(tracker, "publish", "Frying Pan", "geo", str(layer)) == 0
     assert run(tracker, "publish", "Frying Pan", "geo", str(layer)) == 0
     material = layer.with_name("mtl.usda")
-    material.write_text(GEO, encoding="utf-8")
+    material.write_text(layer.read_text(encoding="utf-8"), encoding="utf-8")
     capsys.readouterr()
 
     assert run(tracker, "publish", "Frying Pan", "mtl", str(material), "--with", "geo=1") == 0

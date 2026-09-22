@@ -2,10 +2,7 @@
 
 import os
 
-from piper_studio.launch import WORK_ENV
-
-# Popped, so that a Houdini started from this one does not open it again.
-work = os.environ.pop(WORK_ENV, "")
+work = os.environ.pop("PIPER_OPEN", "")
 if work:
     from piper_houdini import ui
 

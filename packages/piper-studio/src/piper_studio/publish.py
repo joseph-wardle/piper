@@ -16,10 +16,8 @@ from piper.errors import PiperError, RegistryError
 from piper.registry import Registry
 from piper.tracker import Asset
 from piper_studio import compose, layout
-from piper_studio.current import current, make_current
 from piper_studio.storage import asset_directory
 
-# Reserved inside a version for the work file a publish captures.
 _SOURCE = "src"
 _INSTALL_ATTEMPTS = 5
 _NO_VERSIONS: Mapping[str, int] = MappingProxyType({})
@@ -27,11 +25,7 @@ _NO_VERSIONS: Mapping[str, int] = MappingProxyType({})
 
 @dataclass(frozen=True, slots=True)
 class ProductVersion:
-    """An installed version of an asset's product, and its registry record.
-
-    ``path`` is the version's root layer. ``record_id`` is None when the
-    version installed but did not register.
-    """
+    """An installed version of an asset's product, and its registry record."""
 
     asset: Asset
     product: str
@@ -89,8 +83,7 @@ def publish(
         )
     if product in with_versions:
         raise PiperError(f"cannot pin {product} while publishing {product}")
-    before = current(root, asset)
-    pins = compose.pins(root, asset, before) if before is not None else {}
+    before, pins = compose.current_pins(root, asset)
     for named, version in with_versions.items():
         compose.layer_path(root, asset, named, version)
         pins[named] = version
@@ -100,22 +93,26 @@ def publish(
             registry, root=root, asset=asset, product=product, layer=layer, source=source
         )
     except UnregisteredVersionError as exc:
+        installed = exc.version
         raise PartialPublishError(
             f"{exc}; no asset version was built",
-            PublishResult(exc.version, None, {**pins, product: exc.version.version}, current=False),
+            PublishResult(installed, None, {**pins, product: installed.version}, current=False),
         ) from exc
     pins[product] = component.version
     published = f"published {_named(component)}"
 
-    with tempfile.TemporaryDirectory(prefix="piper_asset_", ignore_cleanup_errors=True) as staged:
+    with tempfile.TemporaryDirectory(
+        prefix="piper_asset_", ignore_cleanup_errors=True
+    ) as directory:
         try:
-            entry = compose.write_asset_version(Path(staged), root=root, asset=asset, pins=pins)
+            entry = compose.write_asset_version(Path(directory), root=root, asset=asset, pins=pins)
             asset_version = publish_product(
                 registry, root=root, asset=asset, product=compose.ASSET, layer=PurePosixPath(entry)
             )
         except UnregisteredVersionError as exc:
             raise PartialPublishError(
-                f"{published}; {exc}; `piper current` makes it current",
+                f"{published}; {exc}; "
+                f"{_current_command(asset, exc.version.version)} makes it current",
                 PublishResult(component, exc.version, pins, current=False),
             ) from exc
         except PiperError as exc:
@@ -124,24 +121,27 @@ def publish(
                 PublishResult(component, None, pins, current=False),
             ) from exc
     published = f"{published} and {_named(asset_version)}"
+    built = PublishResult(component, asset_version, pins, current=False)
 
-    moved = current(root, asset)
-    if moved != before:
-        why = _moved_meanwhile(root, asset, moved, product, asset_version, pins)
-        raise PartialPublishError(
-            f"{published}, but {why}", PublishResult(component, asset_version, pins, current=False)
-        )
     try:
-        make_current(root, asset, asset_version.version)
+        after = compose.current(root, asset)
+        if after == before:
+            compose.make_current(root, asset, asset_version.version)
+            return PublishResult(component, asset_version, pins, current=True)
+        why = _moved_meanwhile(root, asset, after, product, asset_version, pins)
     except PiperError as exc:
         raise PartialPublishError(
-            f"{published}, but could not make it current: {exc}",
-            PublishResult(component, asset_version, pins, current=False),
+            f"{published}, but could not make it current: {exc}", built
         ) from exc
-    return PublishResult(component, asset_version, pins, current=True)
+    raise PartialPublishError(f"{published}, but {why}", built)
 
 
-def composition(result: PublishResult) -> str:
+def published_line(result: PublishResult) -> str:
+    """Which component version a publish installed, and of which asset, as one sentence."""
+    return f"Published {_named(result.component)} of {result.component.asset.name!r}"
+
+
+def composition_line(result: PublishResult) -> str:
     """What the asset version pins and whether it is current, as one sentence."""
     if result.asset_version is None:
         return "no asset version was built"
@@ -151,22 +151,10 @@ def composition(result: PublishResult) -> str:
     return f"{_named(result.asset_version)} pins {listed}, and {state}"
 
 
-def current_line(version: int | None, pins: Mapping[str, int]) -> str:
-    """What is current and what it pins, as one sentence for a publish dialog."""
-    if version is None:
-        return "Nothing is current."
-    pinned = ", ".join(f"{product} {layout.version_name(n)}" for product, n in sorted(pins.items()))
-    return f"Current {layout.version_name(version)} pins {pinned}."
-
-
 def other_versions(
     root: PurePosixPath, asset: Asset, pins: Mapping[str, int], product: str
 ) -> dict[str, tuple[list[int], int]]:
-    """Each other pinned component's installed versions, and the one ``pins`` holds.
-
-    A publish of ``product`` pins that one unless ``with_versions`` names
-    another, so a dialog starts each component's version menu on it.
-    """
+    """Each other pinned component's installed versions, and the one ``pins`` holds."""
     return {
         named: (compose.versions(root, asset, named), pinned)
         for named, pinned in sorted(pins.items())
@@ -178,17 +166,22 @@ def _named(version: ProductVersion) -> str:
     return f"{version.product} {layout.version_name(version.version)}"
 
 
+def _current_command(asset: Asset, version: int) -> str:
+    return f"`piper current {asset.name!r} {version}`"
+
+
 def _moved_meanwhile(
     root: PurePosixPath,
     asset: Asset,
     moved: int | None,
     product: str,
-    built: ProductVersion,
+    asset_version: ProductVersion,
     pins: Mapping[str, int],
 ) -> str:
-    """Why the asset version ``built``, pinning ``pins``, is not current, and the remedy."""
+    """Why ``asset_version``, pinning ``pins``, is not current, and the remedy."""
+    command = _current_command(asset, asset_version.version)
     if moved is None:
-        return "nothing is current any more; `piper current` makes one"
+        return f"nothing is current any more; {command} makes {_named(asset_version)} current"
     differing = {
         name: number
         for name, number in compose.pins(root, asset, moved).items()
@@ -200,8 +193,8 @@ def _moved_meanwhile(
         f"publishing, pinning {listed}"
     )
     if set(differing) <= {product}:
-        return f"{became}; `piper current` makes {_named(built)} current instead"
-    return f"{became}; {_named(built)} is not current; publish again to compose with it"
+        return f"{became}; {command} makes {_named(asset_version)} current instead"
+    return f"{became}; {_named(asset_version)} is not current; publish again to compose with it"
 
 
 @dataclass(frozen=True, slots=True)
@@ -223,11 +216,7 @@ def publish_product(
     layer: PurePosixPath,
     source: PurePosixPath | None = None,
 ) -> ProductVersion:
-    """Install ``layer`` and the files it depends on as the product's next version; register it.
-
-    ``source`` is the work file ``layer`` was exported from. The version keeps a
-    copy of that one file in ``src/``.
-    """
+    """Install ``layer`` and the files it depends on as the product's next version; register it."""
     exported = Path(layer).resolve()
     product_root = _product_root(root, asset, product)
     _check_exported(exported)
@@ -297,7 +286,7 @@ def _installable_files(root: PurePosixPath, exported: Path) -> list[PurePosixPat
     try:
         dependencies = _dependencies(root, exported)
     except Tf.ErrorException as exc:
-        raise _refusal(exported, [_usd_error(exc)]) from exc
+        raise _refusal(exported, [compose.usd_error(exc)]) from exc
 
     problems = _unresolved_or_dirty(dependencies)
     copies: list[PurePosixPath] = []
@@ -332,12 +321,12 @@ def _staged_problems(root: PurePosixPath, staging: Path, layer: Path) -> list[st
                 problems += _absolute_spellings(staging, Path(staged))
         problems += _composition_problems(root, layer)
     except Tf.ErrorException as exc:
-        return [_usd_error(exc)]
+        return [compose.usd_error(exc)]
     return problems
 
 
 def _dependencies(root: PurePosixPath, layer: Path) -> _Dependencies:
-    with Ar.ResolverContextBinder(_context(root)):
+    with Ar.ResolverContextBinder(_resolver_context(root)):
         layers, assets, unresolved = UsdUtils.ComputeAllDependencies(Sdf.AssetPath(str(layer)))
     return _Dependencies(
         layers=tuple(found.realPath for found in layers),
@@ -347,7 +336,7 @@ def _dependencies(root: PurePosixPath, layer: Path) -> _Dependencies:
     )
 
 
-def _context(root: PurePosixPath) -> Ar.DefaultResolverContext:
+def _resolver_context(root: PurePosixPath) -> Ar.DefaultResolverContext:
     # Passed to each walk and stage rather than set as the default search path,
     # which belongs to whichever application hosts the publish.
     return Ar.DefaultResolverContext([str(root)])
@@ -398,7 +387,7 @@ def _absolute_spellings(staging: Path, layer: Path) -> list[str]:
 
 
 def _composition_problems(root: PurePosixPath, layer: Path) -> list[str]:
-    stage = Usd.Stage.Open(str(layer), _context(root), Usd.Stage.LoadAll)
+    stage = Usd.Stage.Open(str(layer), _resolver_context(root), Usd.Stage.LoadAll)
     problems = [str(error) for error in stage.GetCompositionErrors()]
     default_prim = stage.GetRootLayer().defaultPrim
     if not default_prim:
@@ -406,10 +395,6 @@ def _composition_problems(root: PurePosixPath, layer: Path) -> list[str]:
     elif not stage.GetDefaultPrim():
         problems.append(f"{layer.name} names defaultPrim {default_prim!r}, but has no such prim")
     return problems
-
-
-def _usd_error(exc: Tf.ErrorException) -> str:
-    return "; ".join(error.commentary.strip() for error in exc.args)
 
 
 def _copy(export: Path, files: list[PurePosixPath], staging: Path) -> None:

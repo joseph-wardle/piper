@@ -12,12 +12,10 @@ from rich.text import Text
 from piper.find import Matches
 from piper.tracker import Asset
 from piper_studio.create import CreateAssetResult
-from piper_studio.layout import version_name
 from piper_studio.production import PRODUCTION_ENV
 from piper_studio.profile import Profile
 
 if TYPE_CHECKING:
-    # For their types only: importing the module loads USD.
     from piper_studio.publish import ProductVersion, PublishResult
 
 _MISSING = "—"
@@ -96,14 +94,11 @@ def publish_result_as_json(result: "PublishResult", error: str | None = None) ->
 
 def publish_result_as_text(result: "PublishResult") -> None:
     """Write which versions a publish installed, their root layers, and what is current."""
-    # Imported here: the module loads USD, which only a publish pays for.
-    from piper_studio.publish import composition
+    from piper_studio.publish import composition_line, published_line
 
-    component = result.component
-    named = f"{component.product} {version_name(component.version)}"
-    print(f"Published {named} of {component.asset.name!r}")
-    print(component.path)
-    print(composition(result))
+    print(published_line(result))
+    print(result.component.path)
+    print(composition_line(result))
     if result.asset_version is not None:
         print(result.asset_version.path)
 
@@ -115,11 +110,9 @@ def current_as_json(asset: Asset, version: int | None, pins: Mapping[str, int]) 
 
 def current_as_text(asset: Asset, version: int | None, pins: Mapping[str, int]) -> None:
     """Write which asset version consumers of ``asset`` get by default."""
-    if version is None:
-        print(f"Nothing is current for {asset.name!r}")
-        return
-    pinned = ", ".join(f"{product} {version_name(n)}" for product, n in sorted(pins.items()))
-    print(f"Current for {asset.name!r}: asset {version_name(version)} pins {pinned or 'nothing'}")
+    from piper_studio.compose import current_line
+
+    print(f"{asset.name!r}: {current_line(version, pins)}")
 
 
 def _version_json(version: "ProductVersion") -> dict[str, object]:

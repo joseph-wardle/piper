@@ -125,7 +125,7 @@ def test_piper_becomes_houdini_in_the_foreground_with_its_menu_on_the_path(
     monkeypatch.setenv("HFS", str(tmp_path))
     monkeypatch.setenv("PYTHONPATH", "/venv/site-packages")
     monkeypatch.setenv("QT_PLUGIN_PATH", "/venv/plugins")
-    monkeypatch.setenv(launch.WORK_ENV, "7701 lookdev")
+    monkeypatch.setenv(launch.OPEN_ENV, "999 stale")
     monkeypatch.delenv(PRODUCTION_ENV, raising=False)
     became: list[list[str]] = []
     handed: dict[str, str] = {}
@@ -136,13 +136,14 @@ def test_piper_becomes_houdini_in_the_foreground_with_its_menu_on_the_path(
 
     monkeypatch.setattr(os, "execve", execve)
 
-    launch.houdini(GENERAL_PROFILE)
+    launch.houdini(GENERAL_PROFILE, work=(PAN, LOOKDEV))
 
     assert became == [[str(executable), str(executable), "-foreground"]]
     assert handed["PYTHONPATH"] == launch.python_path("houdini")
     assert handed["HOUDINI_PATH"] == f"{release / 'packages' / 'piper-houdini'}{os.pathsep}&"
     assert "QT_PLUGIN_PATH" not in handed
-    assert launch.WORK_ENV not in handed
+    assert launch.OPEN_ENV == "PIPER_OPEN" and handed[launch.OPEN_ENV] == "7701 lookdev"
+    assert launch.houdini_variables(GENERAL_PROFILE)[launch.OPEN_ENV] is None
 
 
 def test_a_production_is_made_in_the_houdini_it_names(
@@ -158,12 +159,6 @@ def test_a_production_is_made_in_the_houdini_it_names(
     assert "sandwich needs Houdini 21.5" in refused
     assert "/opt/hfs21.5" in refused
     assert "set HFS" in refused
-
-
-def test_houdini_is_told_which_work_to_open_once_it_is_up(release: Path) -> None:
-    variables = launch.houdini_variables(GENERAL_PROFILE, work=(PAN, LOOKDEV))
-
-    assert variables[launch.WORK_ENV] == "7701 lookdev"
 
 
 def test_a_production_adds_houdini_packages_by_making_the_directory(
@@ -263,7 +258,7 @@ def test_a_preview_is_opened_by_the_production_houdinis_usdview_without_mayas_li
     (tmp_path / "production").mkdir()
 
     command = launch.usdview_command(profile, tmp_path / "preview" / "frying_pan.usda")
-    handed = launch.compose(
+    handed = launch.environment(
         {"LD_LIBRARY_PATH": "/usr/autodesk/maya2026/lib", "HOME": "/home/artist"},
         launch.usdview_variables(profile),
     )

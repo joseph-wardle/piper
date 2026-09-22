@@ -40,7 +40,7 @@ app.command(launch_app)
 
 @app.command(name="configure")
 def configure_command(name: str = "", /) -> None:
-    """Select the production later commands work in, or report the current selection.
+    """Select the production later commands work in, or report the selected production.
 
     Parameters
     ----------
@@ -190,7 +190,7 @@ def publish_command(
             asset=_asset_named(tracker_for(production), asset),
             product=product,
             layer=PurePosixPath(layer),
-            with_versions=_versions_pinned(pinned),
+            with_versions=_with_versions(pinned),
         )
     except PartialPublishError as exc:
         if as_json:
@@ -222,21 +222,19 @@ def current_command(
         Write the result as JSON for another program.
     """
     from piper_studio import compose
-    from piper_studio.current import current, make_current
 
     production = _active_production()
     found = _asset_named(tracker_for(production), asset)
     if version is not None:
-        make_current(production.root, found, version)
-    number = current(production.root, found)
-    pins = compose.pins(production.root, found, number) if number is not None else {}
+        compose.make_current(production.root, found, version)
+    number, pins = compose.current_pins(production.root, found)
     if as_json:
         render.current_as_json(found, number, pins)
     else:
         render.current_as_text(found, number, pins)
 
 
-def _versions_pinned(pinned: tuple[str, ...]) -> dict[str, int]:
+def _with_versions(pinned: tuple[str, ...]) -> dict[str, int]:
     """``--with geo=5`` as ``{"geo": 5}``."""
     versions: dict[str, int] = {}
     for token in pinned:

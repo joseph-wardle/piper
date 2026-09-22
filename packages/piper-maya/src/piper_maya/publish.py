@@ -13,9 +13,9 @@ from piper.registry import Registry
 from piper.tracker import Asset, Tracker
 from piper_maya.work import scene_stamp
 from piper_studio import compose
-from piper_studio.current import current
 from piper_studio.production import Production
 from piper_studio.publish import PublishResult, publish
+from piper_studio.storage import asset_directory
 from piper_studio.work import stamped_asset
 
 PRODUCT = "geo"
@@ -54,19 +54,13 @@ def publish_work(
     asset: Asset,
     with_versions: Mapping[str, int] = MappingProxyType({}),
 ) -> PublishResult:
-    """Publish the selection as ``asset``'s geometry, with the scene as its source.
-
-    ``asset`` is what ``scene_asset`` returned. The source is the work file when
-    the scene has no unsaved changes, and otherwise the scene as a save would
-    have written it; the work file is never saved or changed here.
-    ``with_versions`` is what the asset version pins instead of current's pins.
-    """
+    """Publish the selection as ``asset``'s geometry, with the scene as its source."""
     scene = Path(cmds.file(query=True, sceneName=True))
     # A cleanup that fails must not replace the result of a publish that happened.
     with tempfile.TemporaryDirectory(
         prefix="piper_publish_", ignore_cleanup_errors=True
     ) as directory:
-        layer = export_selection(Path(directory), asset)
+        layer = export_selection(Path(directory), asset_directory(production.root, asset).name)
         source = scene
         if cmds.file(query=True, modified=True):
             source = Path(directory) / scene.name
@@ -95,17 +89,14 @@ def publish_work(
 def preview_work(production: Production, asset: Asset, directory: Path) -> Path:
     """Write into ``directory`` what publishing the selection would compose."""
     root = production.root
-    layer = export_selection(directory, asset)
-    now = current(root, asset)
-    pins = compose.pins(root, asset, now) if now is not None else {}
+    layer = export_selection(directory, asset_directory(root, asset).name)
+    _, pins = compose.current_pins(root, asset)
     return compose.write_preview(directory, root=root, asset=asset, pins=pins, layer=layer)
 
 
-def export_selection(directory: Path, asset: Asset) -> Path:
-    """Export the selection into ``directory`` as ``asset``'s geometry layer."""
+def export_selection(directory: Path, pipe_name: str) -> Path:
+    """Export the selection into ``directory`` as the geometry of the asset named ``pipe_name``."""
     selection()
-    # Usable as a prim name: `scene_asset` refused the scene otherwise.
-    pipe_name = asset.pipe_name or ""
     layer = directory / f"{PRODUCT}.usd"
     try:
         cmds.loadPlugin("mayaUsdPlugin", quiet=True)
@@ -121,7 +112,7 @@ def export_selection(directory: Path, asset: Asset) -> Path:
     except RuntimeError as exc:
         raise PiperError(f"Maya could not export the selection ({str(exc).strip()})") from exc
     _empty_materials(layer)
-    _under_render_purpose(layer, pipe_name)
+    _move_under_render(layer, pipe_name)
     return layer
 
 
@@ -142,24 +133,20 @@ def _empty_materials(path: Path) -> None:
     layer.Save()
 
 
-def _under_render_purpose(path: Path, pipe_name: str) -> None:
+def _move_under_render(path: Path, pipe_name: str) -> None:
     """Move the exported model under ``/geo/render`` with purpose ``render``; ``/mtl`` stays."""
     layer = Sdf.Layer.FindOrOpen(str(path))
     root = layer.GetPrimAtPath(f"/{pipe_name}")
-    exported = [child for child in root.nameChildren if child.name != _MATERIALS]
-    taken = sorted(child.name for child in exported if child.name in (_GEOMETRY, _MATERIALS))
-    if taken:
-        raise PiperError(
-            f"rename the top-level node {', '.join(taken)}: Piper puts the model under "
-            f"/{pipe_name}/{_GEOMETRY}/{_RENDER} and materials under /{pipe_name}/{_MATERIALS}"
-        )
-    geo = Sdf.PrimSpec(root, _GEOMETRY, Sdf.SpecifierDef, "Scope")
+    exported = [child.path for child in root.nameChildren if child.name != _MATERIALS]
+    # Made under a name the export cannot hold, then renamed once the model is inside.
+    geo = Sdf.PrimSpec(root, f"piper_{_GEOMETRY}", Sdf.SpecifierDef, "Scope")
     render = Sdf.PrimSpec(geo, _RENDER, Sdf.SpecifierDef, "Xform")
     purpose = Sdf.AttributeSpec(render, "purpose", Sdf.ValueTypeNames.Token, Sdf.VariabilityUniform)
     purpose.default = _RENDER
     edit = Sdf.BatchNamespaceEdit()
     for child in exported:
-        edit.Add(Sdf.NamespaceEdit.Reparent(child.path, render.path, -1))
+        edit.Add(Sdf.NamespaceEdit.Reparent(child, render.path, -1))
+    edit.Add(Sdf.NamespaceEdit.Rename(geo.path, _GEOMETRY))
     if not layer.Apply(edit):
         raise PiperError(
             f"could not move the exported model under /{pipe_name}/{_GEOMETRY}/{_RENDER}"

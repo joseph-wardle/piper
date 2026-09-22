@@ -1,4 +1,4 @@
-"""Composes a host application's environment and launch."""
+"""A host application's environment and launch."""
 
 import os
 import re
@@ -17,15 +17,11 @@ from piper_studio.profile import Profile
 MAYA_VERSION = "2026"
 MAYA_USD_VERSION = "0.25.5"
 HOUDINI_VERSION = "21.0"
-WORK_ENV = "PIPER_OPEN"
-"""The work Houdini opens once its interface is up: an asset's id and a context's name."""
+OPEN_ENV = "PIPER_OPEN"
 
 
 def maya(profile: Profile, work: tuple[Asset, Context] | None = None) -> NoReturn:
-    """Launch Maya, working in ``profile``, with Piper's code and menu loaded.
-
-    ``work`` is an asset and the context of its work for Maya to open once it is up.
-    """
+    """Launch Maya, working in ``profile``, with Piper's code and menu loaded."""
     _exec(
         maya_executable(profile),
         ["-command", maya_startup_command(work)],
@@ -52,7 +48,10 @@ def maya_startup_command(work: tuple[Asset, Context] | None) -> str:
 
 def maya_executable(profile: Profile) -> Path:
     """The Maya binary ``profile`` wants, wherever this machine keeps it."""
-    version = _maya_version(profile)
+    production = profile.production
+    version = MAYA_VERSION
+    if production is not None and production.software.maya is not None:
+        version = production.software.maya
     located = os.environ.get("MAYA_LOCATION")
     install = Path(located) if located else Path(f"/usr/autodesk/maya{version}")
     executable = install / "bin" / f"maya{version}"
@@ -66,13 +65,6 @@ def maya_executable(profile: Profile) -> Path:
             f"{profile.name} needs Maya {version}, which is not installed at {install}; {hint}"
         )
     return executable
-
-
-def _maya_version(profile: Profile) -> str:
-    production = profile.production
-    if production is None or production.software.maya is None:
-        return MAYA_VERSION
-    return production.software.maya
 
 
 def maya_variables(profile: Profile) -> dict[str, str | None]:
@@ -90,10 +82,7 @@ def maya_variables(profile: Profile) -> dict[str, str | None]:
 
 
 def houdini(profile: Profile, work: tuple[Asset, Context] | None = None) -> NoReturn:
-    """Launch Houdini, working in ``profile``, with Piper's code and menu on its path.
-
-    ``work`` is an asset and the context of its work for Houdini to open once it is up.
-    """
+    """Launch Houdini, working in ``profile``, with Piper's code and menu on its path."""
     # In the foreground, Houdini's exit is this command's; otherwise its launcher forks it.
     _exec(
         houdini_executable(profile),
@@ -132,13 +121,13 @@ def houdini_variables(
     tools = root / "tools" / "houdini" if root is not None else None
     return {
         "PYTHONPATH": python_path("houdini"),
-        # Piper's menu and startup hook, then `&`, which Houdini expands to its own path.
+        # `&` is Houdini's own path.
         "HOUDINI_PATH": os.pathsep.join([str(release_root() / "packages" / "piper-houdini"), "&"]),
         "HOUDINI_PACKAGE_DIR": str(tools) if tools is not None and tools.is_dir() else None,
         "QT_PLUGIN_PATH": None,
         PRODUCTION_ENV: str(profile.path) if profile.path is not None else None,
         "PXR_AR_DEFAULT_SEARCH_PATH": str(root) if root is not None else None,
-        WORK_ENV: f"{work[0].id} {work[1].name}" if work is not None else None,
+        OPEN_ENV: f"{work[0].id} {work[1].name}" if work is not None else None,
     }
 
 
@@ -149,10 +138,7 @@ def usdview_command(profile: Profile, layer: Path) -> list[str]:
 
 
 def usdview_variables(profile: Profile) -> dict[str, str | None]:
-    """Houdini's variables, and no ``LD_LIBRARY_PATH``.
-
-    Maya's launcher leaves Maya's libraries on it, and hython finds Maya's Python there first.
-    """
+    """Houdini's variables without ``LD_LIBRARY_PATH``, where Maya's launcher leaves Maya's libs."""
     return {**houdini_variables(profile), "LD_LIBRARY_PATH": None}
 
 
@@ -171,7 +157,9 @@ def _root(profile: Profile) -> Path | None:
     return Path(str(production.root)) if production is not None else None
 
 
-def compose(inherited: Mapping[str, str], variables: Mapping[str, str | None]) -> dict[str, str]:
+def environment(
+    inherited: Mapping[str, str], variables: Mapping[str, str | None]
+) -> dict[str, str]:
     """Apply ``variables`` to a copy of ``inherited``. A ``None`` removes the variable."""
     environment = dict(inherited)
     for name, value in variables.items():
@@ -222,9 +210,9 @@ def _exec(
     directory: Path | None,
 ) -> NoReturn:
     """Replace this process with ``executable``."""
-    environment = compose(os.environ, variables)
+    handed = environment(os.environ, variables)
     if directory is not None:
         os.chdir(directory)
     # Whatever Piper printed is still buffered when stdout is a pipe, and would be lost.
     sys.stdout.flush()
-    os.execve(executable, [str(executable), *arguments], environment)
+    os.execve(executable, [str(executable), *arguments], handed)

@@ -119,21 +119,19 @@ def show_publish() -> None:
     # Imported here: loading USD takes most of a second, and Maya's startup does not wait for it.
     from piper_maya.publish import PRODUCT, materials, publish_work, scene_asset, selection
     from piper_studio import compose
-    from piper_studio.current import current
-    from piper_studio.publish import composition, current_line, other_versions
+    from piper_studio.publish import composition_line, other_versions, published_line
 
     production, tracker = _production_and_tracker(profile.active())
     root = production.root
     asset = scene_asset(tracker, production)
-    now = current(root, asset)
-    pins = compose.pins(root, asset, now) if now is not None else {}
+    now, pins = compose.current_pins(root, asset)
     lines = [
         f"Publish to {asset.name}, {PRODUCT}?",
         "",
         f"Selected: {_listed(selection())}",
         f"Materials: {_listed(materials())}",
         "",
-        current_line(now, pins),
+        compose.current_line(now, pins),
     ]
     unsaved = cmds.file(query=True, modified=True)
     buttons = ["Save and Publish", "Publish Without Saving"] if unsaved else ["Publish"]
@@ -157,8 +155,7 @@ def show_publish() -> None:
         cmds.waitCursor(state=False)
     cmds.confirmDialog(
         title="Piper",
-        message=f"Published {result.component.product} {version_name(result.component.version)} "
-        f"of {asset.name}\n\n{result.component.path}\n\n{composition(result)}",
+        message=f"{published_line(result)}\n\n{result.component.path}\n\n{composition_line(result)}",
         button=["OK"],
     )
 
@@ -176,7 +173,7 @@ def show_preview() -> None:
         entry = preview_work(production, asset, directory)
         viewer = subprocess.Popen(
             launch.usdview_command(active, entry),
-            env=launch.compose(os.environ, launch.usdview_variables(active)),
+            env=launch.environment(os.environ, launch.usdview_variables(active)),
             cwd=launch.working_directory(active),
             stderr=subprocess.PIPE,
         )
@@ -190,7 +187,7 @@ def _remove_after_viewing(viewer: subprocess.Popen[bytes], directory: Path) -> N
     _, said = viewer.communicate()
     shutil.rmtree(directory, ignore_errors=True)
     if viewer.returncode != 0:
-        # Maya's interface is the main thread's; this runs there when Maya is next idle.
+        # Maya's UI belongs to the main thread; executeDeferred runs this there.
         utils.executeDeferred(
             show_refusal,
             f"usdview closed with status {viewer.returncode}\n\n"
@@ -245,8 +242,9 @@ def _listed(names: list[str]) -> str:
 def _production_and_tracker(active: Profile) -> tuple[Production, Tracker]:
     production = active.production
     if production is None:
+        known = ", ".join(sorted(profile.PRODUCTIONS))
         raise PiperError(
             "this Maya is not working in a production; "
-            "run `piper configure`, then start Maya with `piper launch maya`"
+            f"run `piper configure` with one of: {known}, then `piper launch maya` again"
         )
     return production, tracker_for(production)

@@ -17,24 +17,19 @@ STAMP_KEYS = (PRODUCTION_KEY, ASSET_ID_KEY, CONTEXT_KEY)
 
 
 def prepare_work(*, root: PurePosixPath, asset: Asset, context: Context) -> Path:
-    """Make the directory ``asset``'s work in ``context`` is kept in, and name its work file.
-
-    The file itself is the host's to create. Safe to repeat.
-    """
+    """Make the directory ``asset``'s work in ``context`` is kept in, and name its work file."""
     if context.subject != "asset":
         raise PiperError(
             f"{context.name} is {context.subject} work, and {asset.name!r} is an asset"
         )
     file = Path(layout.work_file(PurePosixPath(asset_directory(root, asset)), context))
     try:
-        file.parent.mkdir(parents=True)
+        file.parent.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        # Another artist opening the same work may have made it first.
-        if not file.parent.is_dir():
-            raise PiperError(
-                f"cannot open {context.name} work on {asset.name!r}: {file.parent} could not "
-                f"be created ({exc.strerror})"
-            ) from exc
+        raise PiperError(
+            f"cannot open {context.name} work on {asset.name!r}: {file.parent} could not "
+            f"be created ({exc.strerror})"
+        ) from exc
     return file
 
 
@@ -52,7 +47,6 @@ def stamped_asset(
 ) -> Asset:
     """The asset the open scene is work on."""
     asset_id = carried[ASSET_ID_KEY]
-    # A scene the host has never saved carries no stamp, so this refuses it too.
     if carried[PRODUCTION_KEY] != production.name or not asset_id:
         raise PiperError(f"this scene is not {production.name} work; {remedy}")
     asset = tracker.asset(asset_id)
@@ -80,9 +74,8 @@ def restamp_notice(
     """What to tell an artist whose file is now ``asset``'s work in ``context``."""
     if not any(carried.values()):
         return None
-    # An id means something only to the production whose tracker gave it.
-    known = carried[PRODUCTION_KEY] == production.name and carried[ASSET_ID_KEY]
-    was = tracker.asset(known) if known else None
+    own_id = carried[PRODUCTION_KEY] == production.name and carried[ASSET_ID_KEY]
+    was = tracker.asset(own_id) if own_id else None
     name = was.name if was is not None else "an asset this production does not have"
     return (
         f"This file was {carried[CONTEXT_KEY] or 'unnamed'} work on {name}, in "

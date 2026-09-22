@@ -102,14 +102,34 @@ missing: the pipe name of an asset Piper did not create, or the directory.
 
 ```
 piper publish "Frying Pan" geo ./export/geo.usd
+piper publish "Frying Pan" mtl ./export/mtl.usda --with geo=1
 ```
 
 `publish` copies the layer and every file it depends on into the product's
 next version, `<root>/asset/kitchen/frying_pan/publish/geo/v001/`, and
-registers it in ShotGrid as a PublishedFile. Its dependencies must be inside the
-layer's directory, or be pins into installed versions spelled from the
-production root, such as `asset/kitchen/frying_pan/publish/geo/v001/geo.usd`.
-Publishing again installs another version; nothing is replaced.
+registers it in ShotGrid as a PublishedFile. The layer is named for its product.
+Its dependencies must be inside the layer's directory, or be pins into installed
+versions spelled from the production root, such as
+`asset/kitchen/frying_pan/publish/geo/v001/geo.usd`. Publishing again installs
+another version; nothing is replaced.
+
+It then builds the asset version, `publish/asset/v003/frying_pan.usda`, which
+pins this component beside the versions the current asset version pins, and
+makes that version current. `--with` pins another component's version instead
+of current's, for that publish only; a component nothing pins is left out. The
+hosts' Publish… windows offer the versions of the components current pins;
+`--with` can pin any installed version.
+Whatever fails after the component is installed is reported with what was left,
+and nothing is undone.
+
+```
+piper current "Frying Pan"       # which asset version consumers get, and its pins
+piper current "Frying Pan" 2     # make an older one current again
+```
+
+Current is one layer, `publish/asset/frying_pan.usda`, sublayering the version.
+A publish moves it last, and this command is the only other thing that moves it;
+every older asset version stays where it is.
 
 `create` and `publish` write to whichever project and root the configuration
 names, and the example above is the live production. Until the next film has
@@ -147,15 +167,15 @@ look can be RenderMan's. What it shows is deleted when it closes, and a viewer
 that closes with an error says so.
 
 Lookdev is Houdini's. **Piper ▸ Open Work…** opens the asset's one lookdev file,
-`work/lookdev/frying_pan.hipnc`, and starts a new one from the asset version that
-is current: in `/stage`, a Sublayer of that version, a Layer Break, a Material
+`work/lookdev/frying_pan.hipnc`, saying so when the asset version it loads is no
+longer current, and starts a new one from the asset version that is current: in `/stage`, a Sublayer of that version, a Layer Break, a Material
 Library whose prefix is the asset's `mtl` scope, the `OUT_mtl` output a publish
 saves, and below it a dome light, a camera, and Karma render settings for looking,
 which are never published. Materials are named for the slots the geometry left
 under `mtl`. **Piper ▸ Publish…** saves the layer above `OUT_mtl`, says which asset
-version the scene loads and which is current, what each slot was given, and
-offers the other components' versions to pin, then publishes it as the next `mtl`
-version. A layer that sublayers the asset, which a deleted Layer Break does,
+version the scene loads and which is current, what each slot of the geo being
+pinned was given, and offers the other components' versions to pin, then publishes
+it as the next `mtl` version. A layer that sublayers the asset, which a deleted Layer Break does,
 authors outside `mtl`, or names a material for no slot is refused.
 
 ```

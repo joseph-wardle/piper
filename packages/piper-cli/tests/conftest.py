@@ -35,6 +35,18 @@ def root(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def layer(root: Path, tmp_path: Path) -> Path:
+    """An exported layer, beside the directory of the asset it belongs to."""
+    (root / "asset" / "kitchen" / "frying_pan").mkdir(parents=True)
+    path = tmp_path / "export" / "geo.usda"
+    path.parent.mkdir()
+    path.write_text(
+        '#usda 1.0\n(\n    defaultPrim = "pan"\n)\n\ndef Xform "pan"\n{\n}\n', encoding="utf-8"
+    )
+    return path
+
+
+@pytest.fixture
 def production(root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A real configuration file the command loads for itself."""
     path = tmp_path / "production.toml"

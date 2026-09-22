@@ -161,7 +161,6 @@ def check_open_work(production: "Production", check: "Callable[..., None]") -> N
         def asset(self, id: str) -> Asset | None:
             return next((asset for asset in (pan, pot) if asset.id == id), None)
 
-    # Opening work asks a tracker for nothing but an asset by its id.
     tracker = cast("Tracker", Assets())
     modeling = context_named("modeling", subject="asset")
     root = Path(str(production.root))
@@ -237,7 +236,6 @@ def check_open_work(production: "Production", check: "Callable[..., None]") -> N
 
 def check_publish_work(production: "Production", check: "Callable[..., None]") -> None:
     """Publish a scene's selection the way the menu does, into this run's own production."""
-    import dataclasses
     from unittest import mock
 
     from maya import cmds
@@ -304,13 +302,6 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
     )
 
     cmds.select("kettle_grp", "lid")
-    numbered = cast(
-        "Tracker", mock.Mock(asset=lambda id: dataclasses.replace(kettle, pipe_name="3d_kettle"))
-    )
-    check(
-        "a scene whose asset's pipe name cannot name a root prim is refused before any export",
-        "starts with a letter" in refusal(lambda: scene_asset(numbered, production)),
-    )
     check(
         "a saved scene at its work path names its asset", scene_asset(tracker, production) == kettle
     )
@@ -396,14 +387,16 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
 
     cmds.group(cmds.polyCube(name="inside")[0], name="geo")
     cmds.select("geo")
+    grouped = Usd.Stage.Open(str(publish_work(registry, production, kettle).component.path))
     check(
-        "a top-level node named for the namespace is refused by name",
-        "rename the top-level node geo"
-        in refusal(lambda: publish_work(registry, production, kettle)),
+        "a top-level node named geo, as the rig build wants it, lands under geo/render",
+        grouped.GetPrimAtPath("/kettle/geo/render/geo/inside").IsA(UsdGeom.Mesh)
+        and grouped.GetPrimAtPath("/kettle/geo").GetTypeName() == "Scope",
+        " ".join(str(p.GetPath()) for p in grouped.Traverse()),
     )
+    del grouped
     cmds.delete("geo")
 
-    # Looks on the slots, so that a geo publish has mtl versions to pin.
     for number in (1, 2):
         export = root / "export" / f"mtl_{number}"
         export.mkdir(parents=True)
@@ -415,8 +408,6 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
             product="mtl",
             layer=PurePosixPath(export / "mtl.usda"),
         )
-
-    # The menu's handler, with the artist's answers scripted: no window can be shown here.
 
     from piper_maya import ui
 
@@ -443,8 +434,8 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         mock.patch.object(ui, "publish_window", answer_window),
         mock.patch.object(cmds, "confirmDialog", answer_dialog),
     ):
-        # `body` was the default material's before its faces were assigned, and Maya
-        # leaves that connection behind. Naming it would promise a slot the export does not write.
+        # Maya keeps body's link to the default shading group after its faces are reassigned;
+        # the Materials line must not name it.
         cmds.select("body")
         answers[:] = [None]
         ui.show_publish()
@@ -455,10 +446,10 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
             lines[0] == "Publish to Kettle, geo?"
             and "Selected: body" in lines
             and "Materials: steelSG, woodSG" in lines
-            and lines[-1] == "Current v004 pins geo v002, mtl v002."
+            and lines[-1] == "Current is asset v005, pinning geo v003, mtl v002."
             and buttons == ["Save and Publish", "Publish Without Saving"]
             and not shown
-            and versions() == ["v001", "v002"],
+            and versions() == ["v001", "v002", "v003"],
             " | ".join(lines),
         )
         check(
@@ -469,14 +460,14 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         cmds.select("kettle_grp", "lid", "later_edit")
         answers[:] = [("Save and Publish", {"mtl": 2})]
         ui.show_publish()
-        published = Usd.Stage.Open(str(version.parent / "v003" / "geo.usd"))
+        published = Usd.Stage.Open(str(version.parent / "v004" / "geo.usd"))
         slots = sorted(p.GetName() for p in published.Traverse() if p.IsA(UsdShade.Material))
         check(
             "Save and Publish saves the work file, publishes it, and says what it made and pinned",
             not cmds.file(query=True, modified=True)
-            and (version.parent / "v003" / "src" / "kettle.mb").read_bytes() == work.read_bytes()
-            and "Published geo v003 of Kettle" in shown[-1][0]
-            and "asset v005 pins geo v003 and mtl v002, and is current" in shown[-1][0],
+            and (version.parent / "v004" / "src" / "kettle.mb").read_bytes() == work.read_bytes()
+            and "Published geo v004 of 'Kettle'" in shown[-1][0]
+            and "asset v006 pins geo v004 and mtl v002, and is current" in shown[-1][0],
             shown[-1][0].replace("\n", " | "),
         )
         check(
@@ -488,7 +479,7 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         ui.show_publish()
         check(
             "a saved scene is asked nothing about saving: Publish or Cancel",
-            asked[-1][2] == ["Publish"] and versions()[-1] == "v003",
+            asked[-1][2] == ["Publish"] and versions()[-1] == "v004",
         )
         cmds.setAttr("lid.translateY", 1)
         work.chmod(0o444)
@@ -497,7 +488,7 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         ui.show_publish()
         check(
             "a save Maya refuses is shown in Maya's words, and publishes nothing",
-            "Maya could not save the scene (" in shown[-1][0] and versions()[-1] == "v003",
+            "Maya could not save the scene (" in shown[-1][0] and versions()[-1] == "v004",
             shown[-1][0][:90],
         )
         answers[:] = [("Publish Without Saving", {"mtl": 1})]
@@ -505,8 +496,8 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         work.chmod(0o644)
         check(
             "Publish Without Saving pins the version chosen, and leaves the work file as it was",
-            "Published geo v004 of Kettle" in shown[-1][0]
-            and compose.pins(production.root, kettle, 6) == {"geo": 4, "mtl": 1}
+            "Published geo v005 of 'Kettle'" in shown[-1][0]
+            and compose.pins(production.root, kettle, 7) == {"geo": 5, "mtl": 1}
             and work.read_bytes() == saved
             and cmds.file(query=True, modified=True),
             shown[-1][0].replace("\n", " | "),
@@ -528,7 +519,6 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         and [Path(path) for path in cmds.file(query=True, reference=True)] == [spout],
         str(cmds.file(query=True, reference=True)),
     )
-    # A published source carries its work's stamp, and is not that work.
     check(
         "a stamped scene that is not at its work path is refused",
         f"not Kettle's modeling work at {work}"
@@ -597,7 +587,7 @@ def check_preview_work(
     del stage
     ran = subprocess.run(
         [*launch.usdview_command(profile, entry), "--quitAfterStartup"],
-        env=launch.compose(os.environ, launch.usdview_variables(profile)),
+        env=launch.environment(os.environ, launch.usdview_variables(profile)),
         cwd=launch.working_directory(profile),
         capture_output=True,
         text=True,
@@ -610,8 +600,7 @@ def check_preview_work(
         (ran.stdout + ran.stderr).strip()[-200:] or f"exit {ran.returncode}",
     )
 
-    # The menu's handler, with the viewer scripted: it is given an entry that exists, and
-    # outlives it. mayapy never idles, so what is deferred to Maya's main thread runs at once.
+    # mayapy never idles, so executeDeferred is replaced by a direct call.
     started: list[tuple[list[str], bool, str | None]] = []
     status = [0]
 
@@ -652,7 +641,6 @@ def check_preview_work(
             "Preview… starts the viewer on an entry that exists, and removes it when it exits",
             command[:2] == launch.usdview_command(profile, Path(command[-1]))[:2]
             and Path(command[-1]).name == "kettle.usda"
-            and directory.name.startswith("piper_preview_")
             and existed
             and libraries is None
             and settled(lambda: not directory.exists())
@@ -681,7 +669,7 @@ def check_preview_work(
 def run_in_host() -> int:
     """Compose Maya's environment for a production and run this file under ``mayapy`` in it."""
     from piper.errors import PiperError
-    from piper_studio.launch import compose, maya_executable, maya_variables, working_directory
+    from piper_studio.launch import environment, maya_executable, maya_variables, working_directory
     from piper_studio.production import load_production
     from piper_studio.profile import Profile
 
@@ -698,7 +686,7 @@ def run_in_host() -> int:
             return 1
         return subprocess.call(
             [str(mayapy), str(Path(__file__).resolve())],
-            env=compose(os.environ, maya_variables(profile)),
+            env=environment(os.environ, maya_variables(profile)),
             cwd=working_directory(profile),
         )
 

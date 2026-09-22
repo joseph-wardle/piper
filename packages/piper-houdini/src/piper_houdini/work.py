@@ -8,7 +8,6 @@ from piper.errors import PiperError
 from piper.tracker import Asset, Tracker
 from piper_studio import compose
 from piper_studio.context import Context
-from piper_studio.current import current
 from piper_studio.production import Production
 from piper_studio.storage import asset_directory
 from piper_studio.work import STAMP_KEYS, prepare_work, restamp_notice, stamp
@@ -17,7 +16,6 @@ STAGE = "/stage"
 PRODUCT = "mtl"
 OUTPUT_NAME = f"OUT_{PRODUCT}"
 OUTPUT = f"{STAGE}/{OUTPUT_NAME}"
-"""The node whose layer a publish saves: everything above it, down to the Layer Break."""
 
 
 def open_work(
@@ -31,10 +29,10 @@ def open_work(
             try:
                 hou.hipFile.load(str(file))
             except hou.LoadWarning as warning:
-                # The file is open; Houdini is saying what it could not resolve in it.
+                # Raised once the file is open.
                 warned = str(warning).strip()
         else:
-            pinned = current(production.root, asset)
+            pinned = compose.current(production.root, asset)
             if pinned is None:
                 raise PiperError(
                     f"nothing is current for {asset.name}, so there is no asset to look at "
@@ -71,11 +69,7 @@ def open_work(
 
 
 def build_starter(root: PurePosixPath, asset: Asset, version: int) -> None:
-    """The network lookdev starts from.
-
-    The asset version, a Layer Break, a Material Library for its slots, the
-    output a publish saves, and below that a place to look at it.
-    """
+    """The network lookdev starts from."""
     pipe_name = asset_directory(root, asset).name
     entry = PurePosixPath(compose.entry_path(root, asset, version)).relative_to(root)
     stage = hou.node(STAGE)

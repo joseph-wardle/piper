@@ -1,17 +1,11 @@
-"""An asset version: two small layers that pin one version of each component.
+"""An asset version: two layers pinning one version of each component, and which one is current."""
 
-``publish/asset/vNNN/<pipe_name>.usda`` is the entry consumers reference. Its
-payload, ``payload.usda``, references the pinned component layers, spelled from
-the production root. Only Piper writes them, and it writes them before they are
-installed like any product, so nothing here is ever edited in place.
-"""
-
+import secrets
 from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 
-# `.usda` is a format of the `usd` plugin. The usd-core wheel cannot load that plugin
-# on demand; importing `Usd` loads it.
-from pxr import Sdf, Usd  # noqa: F401
+# Unused, but importing Usd loads the plugin that reads .usda, which usd-core cannot load on demand.
+from pxr import Sdf, Tf, Usd  # noqa: F401
 
 from piper.errors import PiperError
 from piper.tracker import Asset
@@ -19,7 +13,6 @@ from piper_studio import layout
 from piper_studio.storage import asset_directory
 
 ASSET = "asset"
-"""The product whose versions are asset versions."""
 _PAYLOAD = "payload.usda"
 _STAGE_METADATA = ("upAxis", "metersPerUnit")
 
@@ -27,7 +20,7 @@ _STAGE_METADATA = ("upAxis", "metersPerUnit")
 def write_asset_version(
     directory: Path, *, root: PurePosixPath, asset: Asset, pins: Mapping[str, int]
 ) -> Path:
-    """Write the entry and payload pinning ``pins`` into ``directory``; return the entry."""
+    """Write the entry and payload pinning ``pins`` into ``directory``."""
     references = []
     for product, version in sorted(pins.items()):
         spelled = layer_path(root, asset, product, version)
@@ -38,10 +31,7 @@ def write_asset_version(
 def write_preview(
     directory: Path, *, root: PurePosixPath, asset: Asset, pins: Mapping[str, int], layer: Path
 ) -> Path:
-    """Write the entry a publish of ``layer``, exported into ``directory``, would build; return it.
-
-    ``layer`` takes the place of its product's pin. Nothing is installed.
-    """
+    """Write the entry a publish of ``layer``, exported into ``directory``, would build."""
     references = {layer.stem: (f"./{layer.relative_to(directory)}", layer)}
     for product, version in pins.items():
         if product != layer.stem:
@@ -53,7 +43,6 @@ def write_preview(
 def _write_entry(
     directory: Path, root: PurePosixPath, asset: Asset, references: list[tuple[str, Path]]
 ) -> Path:
-    """Write the entry and its payload, one reference per (spelling, file) in ``references``."""
     pipe_name = asset_directory(root, asset).name
     stage = _stage_metadata([path for _, path in references])
 
@@ -73,7 +62,7 @@ def _write_entry(
     model.assetInfo = {"name": pipe_name}
     model.inheritPathList.prependedItems = [Sdf.Path(f"/__class__/{pipe_name}")]
     model.payloadList.prependedItems = [Sdf.Payload(f"./{_PAYLOAD}")]
-    # The class every instance inherits, so a shot can override all of them at once.
+    # Every instance inherits this, so a shot can override them all at once.
     Sdf.CreatePrimInLayer(entry, f"/__class__/{pipe_name}").specifier = Sdf.SpecifierClass
     entry.GetPrimAtPath("/__class__").specifier = Sdf.SpecifierClass
     entry.defaultPrim = pipe_name
@@ -117,10 +106,7 @@ def entry_path(root: PurePosixPath, asset: Asset, version: int) -> Path:
 
 
 def layer_path(root: PurePosixPath, asset: Asset, product: str, version: int) -> PurePosixPath:
-    """The root layer of an installed component version, spelled from the production root.
-
-    A component's root layer is named for its product, which `publish` requires.
-    """
+    """An installed component version's root layer, named for its product, spelled from the root."""
     directory = Path(layout.product_root(PurePosixPath(asset_directory(root, asset)), product))
     candidates = [
         path
@@ -128,18 +114,82 @@ def layer_path(root: PurePosixPath, asset: Asset, product: str, version: int) ->
         if path.suffix in layout.LAYER_SUFFIXES
     ]
     if not candidates:
-        installed = ", ".join(
-            layout.version_name(number) for number in versions(root, asset, product)
-        )
-        raise PiperError(
-            f"{asset.name} has no {product} {layout.version_name(version)} "
-            f"(installed: {installed or 'none'})"
-        )
+        raise _no_version(root, asset, product, version)
     return PurePosixPath(candidates[0].relative_to(Path(root)))
 
 
+def current(root: PurePosixPath, asset: Asset) -> int | None:
+    """The asset version consumers get by default, or None when none is current."""
+    path = current_path(root, asset)
+    if not path.is_file():
+        return None
+    layer = Sdf.Layer.OpenAsAnonymous(str(path))
+    sublayers = list(layer.subLayerPaths) if layer is not None else []
+    number = layout.version_number(PurePosixPath(sublayers[0]).parent.name) if sublayers else None
+    if number is None or len(sublayers) != 1:
+        raise PiperError(
+            f"{path} is not a current layer Piper wrote; "
+            f"`piper current {asset.name!r} <version>` rewrites it"
+        )
+    return number
+
+
+def current_pins(root: PurePosixPath, asset: Asset) -> tuple[int | None, dict[str, int]]:
+    """The current asset version and what it pins; None and nothing when none is current."""
+    version = current(root, asset)
+    return version, pins(root, asset, version) if version is not None else {}
+
+
+def current_line(version: int | None, pinned: Mapping[str, int]) -> str:
+    """Which asset version is current and what it pins, as one sentence."""
+    if version is None:
+        return "Nothing is current."
+    listed = ", ".join(f"{p} {layout.version_name(n)}" for p, n in sorted(pinned.items()))
+    return f"Current is {ASSET} {layout.version_name(version)}, pinning {listed}."
+
+
+def make_current(root: PurePosixPath, asset: Asset, version: int) -> None:
+    """Make an installed asset version what consumers get by default."""
+    entry = entry_path(root, asset, version)
+    if not entry.is_file():
+        raise _no_version(root, asset, ASSET, version)
+    path = current_path(root, asset)
+    # Renamed into place, so a reader sees the old layer or the new one.
+    temporary = path.with_name(f".tmp_{secrets.token_hex(4)}_{path.name}")
+    try:
+        layer = Sdf.Layer.CreateNew(str(temporary))
+        layer.subLayerPaths = [f"./{entry.parent.name}/{entry.name}"]
+        installed = Sdf.Layer.OpenAsAnonymous(str(entry))
+        for name in ("defaultPrim", *_STAGE_METADATA):
+            if installed.pseudoRoot.HasInfo(name):
+                layer.pseudoRoot.SetInfo(name, installed.pseudoRoot.GetInfo(name))
+        layer.Save()
+        temporary.replace(path)
+    except Tf.ErrorException as exc:
+        raise PiperError(f"could not write {temporary}: {usd_error(exc)}") from exc
+    except OSError as exc:
+        raise PiperError(f"could not replace {path} with {temporary} ({exc.strerror})") from exc
+
+
+def current_path(root: PurePosixPath, asset: Asset) -> Path:
+    directory = asset_directory(root, asset)
+    return Path(layout.product_root(PurePosixPath(directory), ASSET), f"{directory.name}.usda")
+
+
+def usd_error(exc: Tf.ErrorException) -> str:
+    return "; ".join(error.commentary.strip() for error in exc.args)
+
+
+def _no_version(root: PurePosixPath, asset: Asset, product: str, version: int) -> PiperError:
+    installed = ", ".join(layout.version_name(n) for n in versions(root, asset, product))
+    return PiperError(
+        f"{asset.name} has no {product} {layout.version_name(version)} "
+        f"(installed: {installed or 'none'})"
+    )
+
+
 def _stage_metadata(layers: list[Path]) -> dict[str, object]:
-    """``upAxis`` and ``metersPerUnit`` as the first of ``layers`` that states them does."""
+    """Copied onto the entry: a stage takes these from its root layer, never from a reference."""
     for path in layers:
         layer = Sdf.Layer.OpenAsAnonymous(str(path))
         if layer is None:

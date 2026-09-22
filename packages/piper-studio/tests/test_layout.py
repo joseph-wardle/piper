@@ -34,7 +34,7 @@ def test_a_slug_keeps_letters_and_digits_and_joins_the_rest(name: str, expected:
 @pytest.mark.parametrize(
     "pipe_name", ["frying_pan", "3d_printer", "sq010", "The Pan", "", "_pan", "pan_3d"]
 )
-def test_a_usable_pipe_name_is_a_slug_that_can_name_a_prim(pipe_name: str) -> None:
+def test_usable_pipe_name_agrees_with_usds_identifier_rule(pipe_name: str) -> None:
     assert usable_pipe_name(pipe_name) == (
         slug(pipe_name) == pipe_name and Sdf.Path.IsValidIdentifier(pipe_name)
     )
