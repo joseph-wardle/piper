@@ -219,6 +219,7 @@ def check_open_work(production: "Production", check: "Callable[..., None]") -> N
 def check_publish_work(production: "Production", check: "Callable[..., None]") -> None:
     """Publish a scene's selection the way the menu does, into this run's own production."""
     import dataclasses
+    from unittest import mock
 
     from maya import cmds
     from pxr import Sdf, Usd, UsdGeom, UsdShade, UsdUtils
@@ -282,50 +283,64 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
     )
 
     cmds.select("kettle_grp", "lid")
-    numbered = dataclasses.replace(kettle, pipe_name="3d_kettle")
+    numbered = cast(
+        "Tracker", mock.Mock(asset=lambda id: dataclasses.replace(kettle, pipe_name="3d_kettle"))
+    )
     check(
-        "an asset whose pipe name cannot name a root prim is refused",
-        "begins with a digit" in refusal(lambda: publish_work(registry, production, numbered)),
+        "a scene whose asset's pipe name cannot name a root prim is refused before any export",
+        "starts with a letter" in refusal(lambda: scene_asset(numbered, production)),
     )
     check(
         "a saved scene at its work path names its asset", scene_asset(tracker, production) == kettle
     )
     result = publish_work(registry, production, kettle)
-    version = Path(str(result.path)).parent
+    version = Path(str(result.component.path)).parent
     check(
         "a saved scene publishes as geo v001",
-        (result.product, result.version, result.path.name) == ("geo", 1, "geo.usd"),
-        str(result.path),
+        (result.component.product, result.component.version, result.component.path.name)
+        == ("geo", 1, "geo.usd"),
+        str(result.component.path),
     )
-    stage = Usd.Stage.Open(str(result.path))
+    stage = Usd.Stage.Open(str(result.component.path))
     prims = list(stage.Traverse())
     paths = {str(prim.GetPath()) for prim in prims}
-    body_in_world = UsdGeom.Xformable(
-        stage.GetPrimAtPath("/kettle/kettle_grp/body")
-    ).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+    model = "/kettle/geo/render"
+    body = stage.GetPrimAtPath(f"{model}/kettle_grp/body")
+    body_in_world = UsdGeom.Xformable(body).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
     check(
-        "the selection, and nothing else, is under one root named for the asset, where Maya had it",
+        "the selection, and nothing else, is under the root's geo/render, where Maya had it",
         stage.GetDefaultPrim().GetPath() == Sdf.Path("/kettle")
-        and {"/kettle/kettle_grp/body", "/kettle/kettle_grp/handle", "/kettle/lid"} <= paths
+        and {f"{model}/kettle_grp/body", f"{model}/kettle_grp/handle", f"{model}/lid"} <= paths
         and not any("scratch" in path or "spout" in path for path in paths)
-        and tuple(body_in_world.ExtractTranslation()) == (0, 2, 0),
+        and stage.GetPrimAtPath("/kettle/geo").GetTypeName() == "Scope"
+        and UsdGeom.Imageable(body).ComputePurpose() == UsdGeom.Tokens.render,
         f"kind={Usd.ModelAPI(stage.GetDefaultPrim()).GetKind()!r}",
+    )
+    half = max(abs(value) for point in UsdGeom.Mesh(body).GetPointsAttr().Get() for value in point)
+    check(
+        "in metres: a cube of one centimetre two centimetres up",
+        UsdGeom.GetStageMetersPerUnit(stage) == 1.0
+        and tuple(body_in_world.ExtractTranslation()) == (0, 0.02, 0)
+        and abs(half - 0.005) < 1e-9,
+        f"{tuple(body_in_world.ExtractTranslation())} half={half}",
     )
     materials = [prim for prim in prims if prim.IsA(UsdShade.Material)]
     families = {
         UsdGeom.Subset(prim).GetFamilyNameAttr().Get() for prim in prims if prim.IsA(UsdGeom.Subset)
     }
-    bound = UsdShade.MaterialBindingAPI(stage.GetPrimAtPath("/kettle/kettle_grp/body/steelSG"))
+    bound = UsdShade.MaterialBindingAPI(stage.GetPrimAtPath(f"{model}/kettle_grp/body/steelSG"))
     check(
-        "materials are named slots geometry is bound to",
+        "materials are named slots under /mtl that the moved geometry is still bound to",
         {"steelSG", "woodSG"} <= {prim.GetName() for prim in materials}
+        and all(prim.GetPath().GetParentPath() == Sdf.Path("/kettle/mtl") for prim in materials)
         and families == {"materialBind"}
-        and bound.GetDirectBinding().GetMaterialPath().name == "steelSG",
+        and bound.GetDirectBinding().GetMaterialPath() == Sdf.Path("/kettle/mtl/steelSG"),
         f"{sorted(prim.GetName() for prim in materials)} {sorted(families)}",
     )
     spelled: list[str] = []
     UsdUtils.ModifyAssetPaths(
-        Sdf.Layer.OpenAsAnonymous(str(result.path)), lambda path: (spelled.append(path), path)[1]
+        Sdf.Layer.OpenAsAnonymous(str(result.component.path)),
+        lambda path: (spelled.append(path), path)[1],
     )
     check(
         "and hold no shading and no texture paths",
@@ -344,7 +359,7 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
     cmds.select("kettle_grp", "lid", "later_edit")
     saved = work.stat().st_mtime_ns, work.read_bytes()
     result = publish_work(registry, production, kettle)
-    source = Path(str(result.path)).parent / "src" / "kettle.mb"
+    source = Path(str(result.component.path)).parent / "src" / "kettle.mb"
     check(
         "publishing without saving leaves the work file, and the scene, as they were",
         (work.stat().st_mtime_ns, work.read_bytes()) == saved
@@ -352,14 +367,22 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         and cmds.file(query=True, sceneName=True) == str(work),
     )
     # A prim outlives no stage, so the stage is held while the prim is asked for.
-    edited = Usd.Stage.Open(str(result.path))
+    edited = Usd.Stage.Open(str(result.component.path))
     check(
         "and publishes the unsaved edit",
-        result.version == 2 and bool(edited.GetPrimAtPath("/kettle/later_edit")),
+        result.component.version == 2 and bool(edited.GetPrimAtPath(f"{model}/later_edit")),
     )
 
+    cmds.group(cmds.polyCube(name="inside")[0], name="geo")
+    cmds.select("geo")
+    check(
+        "a top-level node named for the namespace is refused by name",
+        "rename the top-level node geo"
+        in refusal(lambda: publish_work(registry, production, kettle)),
+    )
+    cmds.delete("geo")
+
     # The menu's handler, with the artist's answers scripted: no dialog can be shown here.
-    from unittest import mock
 
     from piper_maya import ui
 

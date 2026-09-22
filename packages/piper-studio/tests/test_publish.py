@@ -12,7 +12,16 @@ from piper.errors import PiperError, RegistryError
 from piper.registry import Registry
 from piper.tracker import Asset
 from piper_studio import publish as publish_module
-from piper_studio.publish import PartialPublishError, PublishResult, publish
+from piper_studio.current import current, make_current
+from piper_studio.publish import (
+    PartialPublishError,
+    ProductVersion,
+    PublishResult,
+    UnregisteredVersionError,
+    composition,
+    publish,
+    publish_product,
+)
 
 Registrations = list[tuple[Asset, str, int, PurePosixPath]]
 
@@ -28,6 +37,22 @@ GEO = """
     {
         def Mesh "body"
         {
+        }
+    }
+"""
+
+# What a material publish installs: overs on the model, a definition inside it.
+MTL = """
+    #usda 1.0
+    (
+        defaultPrim = "pan"
+    )
+
+    over "pan"
+    {
+        def Material "wood"
+        {
+            color3f inputs:diffuseColor = (0.8, 0.5, 0.2)
         }
     }
 """
@@ -72,8 +97,8 @@ def run(
     product: str = "geo",
     asset: Asset = PAN,
     source: Path | None = None,
-) -> PublishResult:
-    return publish(
+) -> ProductVersion:
+    return publish_product(
         registry,
         root=PurePosixPath(root),
         asset=asset,
@@ -450,10 +475,10 @@ def test_a_registration_failure_reports_the_installed_version(
     monkeypatch.setattr(registry, "register", refuse)
     write(export / "geo.usda", GEO)
 
-    with pytest.raises(PartialPublishError) as raised:
+    with pytest.raises(UnregisteredVersionError) as raised:
         run(registry, root, export / "geo.usda")
 
-    result = raised.value.result
+    result = raised.value.version
     assert (result.version, result.record_id) == (1, None)
     assert Path(result.path).is_file()
     assert f"installed {result.path}, but could not register it" in str(raised.value)
@@ -562,3 +587,306 @@ def test_a_rename_that_failed_without_moving_staging_leaves_both_and_names_them(
     assert staging.name.startswith(".tmp_")
     assert str(staging) in str(raised.value)
     assert registrations == []
+
+
+# ---------------------------------------------------------------------------
+# `publish`: the component, the asset version pinning it, and `current`.
+
+
+def compose_run(
+    registry: Registry,
+    root: Path,
+    layer: Path,
+    *,
+    product: str = "geo",
+    with_versions: dict[str, int] | None = None,
+) -> PublishResult:
+    return publish(
+        registry,
+        root=PurePosixPath(root),
+        asset=PAN,
+        product=product,
+        layer=PurePosixPath(layer),
+        with_versions=with_versions or {},
+    )
+
+
+def composed(root: Path, version: int) -> Usd.Stage:
+    entry = products(root, "asset") / f"v{version:03d}" / "frying_pan.usda"
+    return Usd.Stage.Open(str(entry), Ar.DefaultResolverContext([str(root)]), Usd.Stage.LoadAll)
+
+
+def test_the_first_publish_builds_an_asset_version_pinning_it_alone_and_makes_it_current(
+    registry: Registry, registrations: Registrations, root: Path, export: Path
+) -> None:
+    write(export / "geo.usda", GEO)
+
+    result = compose_run(registry, root, export / "geo.usda")
+
+    assert result.component.version == 1 and result.asset_version is not None
+    assert (result.asset_version.version, dict(result.pins), result.current) == (
+        1,
+        {"geo": 1},
+        True,
+    )
+    assert [(product, version) for _, product, version, _ in registrations] == [
+        ("geo", 1),
+        ("asset", 1),
+    ]
+    assert current(PurePosixPath(root), PAN) == 1
+    assert composition(result) == "asset v001 pins geo v001, and is current"
+    stage = composed(root, 1)
+    assert stage.GetCompositionErrors() == [] and stage.GetPrimAtPath("/frying_pan/body")
+
+
+def test_each_publish_replaces_its_own_component_in_what_is_current(
+    registry: Registry, root: Path, export: Path
+) -> None:
+    write(export / "geo.usda", GEO)
+    write(export / "mtl.usda", MTL)
+    compose_run(registry, root, export / "geo.usda")
+
+    with_material = compose_run(registry, root, export / "mtl.usda", product="mtl")
+    new_geometry = compose_run(registry, root, export / "geo.usda")
+
+    assert dict(with_material.pins) == {"geo": 1, "mtl": 1}
+    assert dict(new_geometry.pins) == {"geo": 2, "mtl": 1}
+    assert current(PurePosixPath(root), PAN) == 3
+    assert composition(with_material) == "asset v002 pins geo v001 and mtl v001, and is current"
+    assert (
+        composed(root, 2)
+        .GetPrimAtPath("/frying_pan/wood")
+        .GetAttribute("inputs:diffuseColor")
+        .Get()
+    )
+
+
+def test_an_older_composition_made_current_is_the_base_of_the_next_publish(
+    registry: Registry, root: Path, export: Path
+) -> None:
+    write(export / "geo.usda", GEO)
+    write(export / "mtl.usda", MTL)
+    compose_run(registry, root, export / "geo.usda")
+    compose_run(registry, root, export / "mtl.usda", product="mtl")
+    compose_run(registry, root, export / "geo.usda")
+    make_current(PurePosixPath(root), PAN, 2)
+
+    result = compose_run(registry, root, export / "mtl.usda", product="mtl")
+
+    assert dict(result.pins) == {"geo": 1, "mtl": 2}
+    assert result.asset_version is not None and result.asset_version.version == 4
+    assert current(PurePosixPath(root), PAN) == 4
+
+
+def test_a_named_version_replaces_the_current_pin_for_that_publish_only(
+    registry: Registry, root: Path, export: Path
+) -> None:
+    write(export / "geo.usda", GEO)
+    write(export / "mtl.usda", MTL)
+    compose_run(registry, root, export / "geo.usda")
+    compose_run(registry, root, export / "geo.usda")
+    make_current(PurePosixPath(root), PAN, 1)
+
+    result = compose_run(
+        registry, root, export / "mtl.usda", product="mtl", with_versions={"geo": 2}
+    )
+
+    assert dict(result.pins) == {"geo": 2, "mtl": 1}
+
+
+@pytest.mark.parametrize(
+    ("product", "name", "with_versions", "refusal"),
+    [
+        pytest.param(
+            "asset", "asset.usda", {}, "an asset version is built by publishing", id="asset"
+        ),
+        pytest.param("mtl", "geo.usda", {}, "named for its product, mtl.usd, mtl.usda", id="name"),
+        pytest.param(
+            "geo", "geo.usda", {"geo": 1}, "cannot pin geo while publishing geo", id="self"
+        ),
+        pytest.param(
+            "geo", "geo.usda", {"mtl": 4}, r"has no mtl v004 \(installed: none\)", id="missing"
+        ),
+    ],
+)
+def test_a_composition_that_cannot_be_built_is_refused_before_anything_is_published(
+    registry: Registry,
+    registrations: Registrations,
+    root: Path,
+    export: Path,
+    product: str,
+    name: str,
+    with_versions: dict[str, int],
+    refusal: str,
+) -> None:
+    write(export / "geo.usda", GEO)
+    write(export / "asset.usda", GEO)
+
+    with pytest.raises(PiperError, match=refusal):
+        compose_run(registry, root, export / name, product=product, with_versions=with_versions)
+
+    assert registrations == []
+    assert not (root / "asset" / "kitchen" / "frying_pan" / "publish").exists()
+
+
+def refusing(registry: Registry, product: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    register = registry.register
+
+    def refuse(asset: Asset, *, product: str, version: int, path: PurePosixPath) -> str:
+        if product == refused:
+            raise RegistryError(f"shotgrid: refused to register {product} v{version:03d}")
+        return register(asset, product=product, version=version, path=path)
+
+    refused = product
+    monkeypatch.setattr(registry, "register", refuse)
+
+
+def test_a_component_that_did_not_register_builds_no_asset_version(
+    registry: Registry, root: Path, export: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write(export / "geo.usda", GEO)
+    refusing(registry, "geo", monkeypatch)
+
+    with pytest.raises(PartialPublishError) as raised:
+        compose_run(registry, root, export / "geo.usda")
+
+    result = raised.value.result
+    assert (result.component.version, result.component.record_id) == (1, None)
+    assert (result.asset_version, dict(result.pins), result.current) == (None, {"geo": 1}, False)
+    assert str(raised.value).endswith(
+        "publishing again installs another version; no asset version was built"
+    )
+    assert not products(root, "asset").exists()
+    assert current(PurePosixPath(root), PAN) is None
+
+
+def test_an_asset_version_that_did_not_register_is_installed_and_not_current(
+    registry: Registry, root: Path, export: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write(export / "geo.usda", GEO)
+    compose_run(registry, root, export / "geo.usda")
+    refusing(registry, "asset", monkeypatch)
+
+    with pytest.raises(PartialPublishError) as raised:
+        compose_run(registry, root, export / "geo.usda")
+
+    result = raised.value.result
+    assert result.component.record_id is not None and result.asset_version is not None
+    assert (result.asset_version.version, result.asset_version.record_id, result.current) == (
+        2,
+        None,
+        False,
+    )
+    assert "published geo v002; installed" in str(raised.value)
+    assert str(raised.value).endswith("`piper current` makes it current")
+    assert current(PurePosixPath(root), PAN) == 1
+    assert composition(result) == "asset v002 pins geo v002, and is not current"
+
+
+def test_an_asset_version_that_cannot_be_installed_leaves_the_component_published(
+    registry: Registry, registrations: Registrations, root: Path, export: Path
+) -> None:
+    write(export / "geo.usda", GEO)
+    products(root, "asset").mkdir(parents=True)
+    products(root, "asset").chmod(0o500)
+    try:
+        with pytest.raises(PartialPublishError) as raised:
+            compose_run(registry, root, export / "geo.usda")
+    finally:
+        products(root, "asset").chmod(0o700)
+
+    result = raised.value.result
+    assert result.component.record_id == "6601"
+    assert (result.asset_version, result.current) == (None, False)
+    assert "published geo v001, but could not build the asset version: cannot publish" in str(
+        raised.value
+    )
+    assert [product for _, product, _, _ in registrations] == ["geo"]
+    assert current(PurePosixPath(root), PAN) is None
+
+
+def test_a_version_made_current_during_the_publish_stays_current_and_is_named(
+    registry: Registry, root: Path, export: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write(export / "geo.usda", GEO)
+    write(export / "mtl.usda", MTL)
+    compose_run(registry, root, export / "geo.usda")
+    compose_run(registry, root, export / "mtl.usda", product="mtl")
+    make_current(PurePosixPath(root), PAN, 1)
+    register = registry.register
+
+    def move_meanwhile(asset: Asset, *, product: str, version: int, path: PurePosixPath) -> str:
+        if product == "asset":
+            make_current(PurePosixPath(root), PAN, 2)
+        return register(asset, product=product, version=version, path=path)
+
+    monkeypatch.setattr(registry, "register", move_meanwhile)
+
+    with pytest.raises(PartialPublishError) as raised:
+        compose_run(registry, root, export / "geo.usda")
+
+    result = raised.value.result
+    assert result.asset_version is not None and result.asset_version.version == 3
+    assert (dict(result.pins), result.current) == ({"geo": 2}, False)
+    assert (
+        "published geo v002 and asset v003, but asset v002 became current while you were "
+        "publishing, pinning geo v001, mtl v001; asset v003 is not current; publish again"
+    ) in str(raised.value)
+    assert current(PurePosixPath(root), PAN) == 2
+
+
+def test_a_race_on_the_same_component_is_settled_by_making_the_newer_version_current(
+    registry: Registry, root: Path, export: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write(export / "geo.usda", GEO)
+    write(export / "mtl.usda", MTL)
+    compose_run(registry, root, export / "geo.usda")
+    compose_run(registry, root, export / "mtl.usda", product="mtl")
+    register = registry.register
+
+    def publish_meanwhile(asset: Asset, *, product: str, version: int, path: PurePosixPath) -> str:
+        if product == "asset" and version == 3:
+            monkeypatch.setattr(registry, "register", register)
+            compose_run(registry, root, export / "geo.usda")
+        return register(asset, product=product, version=version, path=path)
+
+    monkeypatch.setattr(registry, "register", publish_meanwhile)
+
+    with pytest.raises(PartialPublishError) as raised:
+        compose_run(registry, root, export / "geo.usda")
+
+    assert raised.value.result.asset_version is not None
+    assert str(raised.value).endswith(
+        "asset v004 became current while you were publishing, pinning geo v003; "
+        "`piper current` makes asset v003 current instead"
+    )
+    assert current(PurePosixPath(root), PAN) == 4
+
+
+def test_a_current_layer_that_cannot_be_written_leaves_both_versions_and_names_the_remedy(
+    registry: Registry, root: Path, export: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write(export / "geo.usda", GEO)
+    compose_run(registry, root, export / "geo.usda")
+    register = registry.register
+
+    def lock_meanwhile(asset: Asset, *, product: str, version: int, path: PurePosixPath) -> str:
+        if product == "asset":
+            products(root, "asset").chmod(0o500)
+        return register(asset, product=product, version=version, path=path)
+
+    monkeypatch.setattr(registry, "register", lock_meanwhile)
+    try:
+        with pytest.raises(PartialPublishError) as raised:
+            compose_run(registry, root, export / "geo.usda")
+    finally:
+        products(root, "asset").chmod(0o700)
+
+    result = raised.value.result
+    assert result.asset_version is not None and result.asset_version.record_id is not None
+    assert result.current is False
+    assert (
+        "published geo v002 and asset v002, but could not make it current: could not write"
+        in str(raised.value)
+    )
+    assert current(PurePosixPath(root), PAN) == 1

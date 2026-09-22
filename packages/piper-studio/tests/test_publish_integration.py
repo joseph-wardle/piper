@@ -23,7 +23,7 @@ from piper_shotgrid.tracker import ShotGridTracker
 from piper_studio import publish as publish_module
 from piper_studio.create import create_asset
 from piper_studio.layout import asset_root, product_root
-from piper_studio.publish import PartialPublishError, PublishResult, publish
+from piper_studio.publish import ProductVersion, UnregisteredVersionError, publish_product
 
 pytestmark = pytest.mark.integration
 
@@ -103,8 +103,8 @@ def write(path: Path, text: str) -> Path:
 
 def publish_to_scratch(
     registry: Registry, asset: Asset, product: str, layer: Path
-) -> PublishResult:
-    return publish(
+) -> ProductVersion:
+    return publish_product(
         registry, root=PurePosixPath(ROOT), asset=asset, product=product, layer=PurePosixPath(layer)
     )
 
@@ -227,7 +227,7 @@ def entry(pins: str, mtl: str) -> str:
     """
 
 
-def composed_color(published: PublishResult) -> tuple[float, ...]:
+def composed_color(published: ProductVersion) -> tuple[float, ...]:
     context = Ar.DefaultResolverContext([str(ROOT)])
     stage = Usd.Stage.Open(str(published.path), context, Usd.Stage.LoadAll)
     assert stage.GetPrimAtPath("/pan/body")
@@ -243,7 +243,7 @@ def test_pinned_components_publish_compose_and_register_in_the_write_project(
     registry = ShotGridRegistry(site=SITE, script=SCRIPT, key=key, project=WRITE_PROJECT)
     name, folder = f"Piper Test {run_id}", f"piper_test_{run_id}"
 
-    def publish_layer(registry: Registry, product: str, text: str) -> PublishResult:
+    def publish_layer(registry: Registry, product: str, text: str) -> ProductVersion:
         layer = write(export / product / f"{product}.usda", text)
         return publish_to_scratch(registry, asset, product, layer)
 
@@ -291,9 +291,9 @@ def test_pinned_components_publish_compose_and_register_in_the_write_project(
         refusing = ShotGridRegistry(
             site=SITE, script=SCRIPT, key="not-a-real-key", project=WRITE_PROJECT
         )
-        with pytest.raises(PartialPublishError) as raised:
+        with pytest.raises(UnregisteredVersionError) as raised:
             publish_layer(refusing, "geo", GEO)
-        unregistered = raised.value.result
+        unregistered = raised.value.version
         assert (unregistered.version, unregistered.record_id) == (2, None)
         assert Path(unregistered.path).is_file()
         assert str(unregistered.path) in str(raised.value)

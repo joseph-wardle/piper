@@ -151,18 +151,24 @@ def publish_command(
     layer: Path,
     /,
     *,
+    pinned: Annotated[tuple[str, ...], Parameter(name="--with")] = (),
     as_json: Annotated[bool, Parameter(name="--json")] = False,
 ) -> None:
-    """Install an exported USD layer as the next version of an asset's product, and register it.
+    """Publish a component: install the layer, build the asset version pinning it, make it current.
+
+    The asset version pins what the current one pins, with this component
+    replaced. A component nothing pins is left out.
 
     Parameters
     ----------
     asset
         The asset's name, spelled exactly as the tracker spells it.
     product
-        What the layer holds, such as geo or mtl.
+        What the layer holds, such as geo or mtl. The layer is named for it.
     layer
         The exported USD layer.
+    pinned
+        Another component's version to pin instead of the current one's, as geo=5.
     as_json
         Write the result as JSON for another program.
     """
@@ -177,6 +183,7 @@ def publish_command(
             asset=_asset_named(tracker_for(production), asset),
             product=product,
             layer=PurePosixPath(layer),
+            with_versions=_versions_pinned(pinned),
         )
     except PartialPublishError as exc:
         if as_json:
@@ -186,6 +193,51 @@ def publish_command(
         render.publish_result_as_json(result)
     else:
         render.publish_result_as_text(result)
+
+
+@app.command(name="current")
+def current_command(
+    asset: str,
+    version: int | None = None,
+    /,
+    *,
+    as_json: Annotated[bool, Parameter(name="--json")] = False,
+) -> None:
+    """Report which asset version consumers get by default, or make one the version they get.
+
+    Parameters
+    ----------
+    asset
+        The asset's name, spelled exactly as the tracker spells it.
+    version
+        The asset version to make current, such as 12. Without it, nothing moves.
+    as_json
+        Write the result as JSON for another program.
+    """
+    from piper_studio import compose
+    from piper_studio.current import current, make_current
+
+    production = _active_production()
+    found = _asset_named(tracker_for(production), asset)
+    if version is not None:
+        make_current(production.root, found, version)
+    number = current(production.root, found)
+    pins = compose.pins(production.root, found, number) if number is not None else {}
+    if as_json:
+        render.current_as_json(found, number, pins)
+    else:
+        render.current_as_text(found, number, pins)
+
+
+def _versions_pinned(pinned: tuple[str, ...]) -> dict[str, int]:
+    """``--with geo=5`` as ``{"geo": 5}``."""
+    versions: dict[str, int] = {}
+    for token in pinned:
+        product, _, number = token.partition("=")
+        if not product or not number.isdigit():
+            raise PiperError(f"spell --with as product=version, such as geo=5, not {token!r}")
+        versions[product] = int(number)
+    return versions
 
 
 def _active_production() -> Production:

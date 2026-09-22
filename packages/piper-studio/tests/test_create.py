@@ -94,6 +94,17 @@ def test_a_name_or_folder_without_letters_or_digits_is_refused(
     assert not (root / "asset").exists()
 
 
+def test_a_name_whose_pipe_name_would_start_with_a_digit_is_refused(
+    tracker: Tracker, root: Path
+) -> None:
+    # A slug keeps a leading digit, and a USD prim's name cannot start with one.
+    with pytest.raises(PiperError, match=r"'3d_printer'.*such as 'Printer 3D'"):
+        create(tracker, root, "3D Printer")
+
+    assert len(tracker.find_assets("")) == 3
+    assert not (root / "asset").exists()
+
+
 @pytest.mark.parametrize(
     "make_unusable",
     [

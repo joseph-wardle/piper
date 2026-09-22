@@ -4,7 +4,7 @@ from pathlib import Path, PurePosixPath
 
 from piper.errors import PiperError
 from piper.tracker import Asset
-from piper_studio.layout import asset_root, slug
+from piper_studio.layout import asset_root, slug, usable_pipe_name
 
 
 def asset_directory(root: PurePosixPath, asset: Asset) -> Path:
@@ -20,7 +20,7 @@ def asset_directory(root: PurePosixPath, asset: Asset) -> Path:
             f"asset {asset.name!r} has no pipe name, and so no directory; "
             "`piper create asset` gives it one"
         )
-    if slug(pipe_name) != pipe_name:
+    if not usable_pipe_name(pipe_name):
         raise PiperError(unusable_pipe_name(asset))
     directory = Path(asset_root(root, folder, pipe_name))
     if not directory.is_dir():
@@ -31,9 +31,9 @@ def asset_directory(root: PurePosixPath, asset: Asset) -> Path:
 
 
 def unusable_pipe_name(asset: Asset) -> str:
-    """The refusal of a pipe name somebody typed into the tracker that cannot name a directory."""
+    """The refusal of a pipe name somebody typed into the tracker that cannot name its paths."""
     return (
         f"asset {asset.name!r} has the pipe name {asset.pipe_name!r}, which cannot name its "
-        "directory: a pipe name is lowercase letters, digits, and underscores; "
-        "correct it in the tracker"
+        "directory or its USD prim: a pipe name is lowercase letters, digits, and "
+        "underscores, and starts with a letter; correct it in the tracker"
     )

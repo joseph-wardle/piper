@@ -8,6 +8,7 @@ from piper_studio.context import Context
 _APOSTROPHES = re.compile(r"['\u2019]")
 _SEPARATORS = re.compile(r"[^a-z0-9]+")
 _VERSION = re.compile(r"v([0-9]{3,})")
+LAYER_SUFFIXES = (".usd", ".usda", ".usdc")
 
 
 def slug(name: str) -> str:
@@ -17,6 +18,11 @@ def slug(name: str) -> str:
     """
     lowered = _APOSTROPHES.sub("", name.lower())
     return _SEPARATORS.sub("_", lowered).strip("_")
+
+
+def usable_pipe_name(pipe_name: str) -> bool:
+    """Whether a pipe name can name both an asset's directory and its USD root prim."""
+    return slug(pipe_name) == pipe_name and pipe_name[:1].isalpha()
 
 
 def asset_root(root: PurePosixPath, folder: str, pipe_name: str) -> PurePosixPath:

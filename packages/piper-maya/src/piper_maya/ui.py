@@ -106,6 +106,7 @@ def show_publish() -> None:
     """Show what the open scene would publish, and publish it when the artist agrees."""
     # Imported here: loading USD takes most of a second, and Maya's startup does not wait for it.
     from piper_maya.publish import PRODUCT, materials, publish_work, scene_asset, selection
+    from piper_studio.publish import composition
 
     production, tracker = _production_and_tracker()
     asset = scene_asset(tracker, production)
@@ -142,8 +143,8 @@ def show_publish() -> None:
         cmds.waitCursor(state=False)
     cmds.confirmDialog(
         title="Piper",
-        message=f"Published {result.product} {version_name(result.version)} of {asset.name}\n\n"
-        f"{result.path}",
+        message=f"Published {result.component.product} {version_name(result.component.version)} "
+        f"of {asset.name}\n\n{result.component.path}\n\n{composition(result)}",
         button=["OK"],
     )
 

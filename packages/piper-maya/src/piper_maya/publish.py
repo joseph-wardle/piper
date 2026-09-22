@@ -17,6 +17,9 @@ from piper_studio.publish import PublishResult, publish
 from piper_studio.storage import asset_directory
 
 PRODUCT = "geo"
+_GEOMETRY = "geo"
+_RENDER = "render"
+_MATERIALS = "mtl"
 _REMEDY = "open the asset's work with Piper > Open Work…, then import this scene into it"
 
 
@@ -68,12 +71,8 @@ def publish_work(registry: Registry, production: Production, asset: Asset) -> Pu
     have written it; the work file is never saved or changed here.
     """
     selection()
-    # MayaUSD logs an error for a root prim it cannot name, and exports without one.
-    if not Sdf.Path.IsValidIdentifier(asset.pipe_name or ""):
-        raise PiperError(
-            f"cannot publish {asset.name}: its pipe name, {asset.pipe_name!r}, begins with a "
-            "digit, and a USD prim's name cannot; tell a TD, since a pipe name never changes"
-        )
+    # Usable as a prim name: `scene_asset` refused the scene otherwise.
+    pipe_name = asset.pipe_name or ""
     scene = Path(cmds.file(query=True, sceneName=True))
     # A cleanup that fails must not replace the result of a publish that happened.
     with tempfile.TemporaryDirectory(
@@ -86,9 +85,11 @@ def publish_work(registry: Registry, production: Production, asset: Asset) -> Pu
             cmds.mayaUSDExport(
                 file=str(layer),
                 selection=True,
-                rootPrim=asset.pipe_name,
+                rootPrim=pipe_name,
                 rootPrimType="xform",
                 exportComponentTags=False,
+                metersPerUnit=1.0,
+                exportDistanceUnit=True,
             )
             if cmds.file(query=True, modified=True):
                 source = Path(directory) / scene.name
@@ -101,6 +102,7 @@ def publish_work(registry: Registry, production: Production, asset: Asset) -> Pu
         except RuntimeError as exc:
             raise PiperError(f"Maya could not export the scene ({str(exc).strip()})") from exc
         _empty_materials(layer)
+        _under_render_purpose(layer, pipe_name)
         return publish(
             registry,
             root=production.root,
@@ -125,4 +127,29 @@ def _empty_materials(path: Path) -> None:
             del spec.nameChildren[child.name]
         for prop in list(spec.properties):
             spec.RemoveProperty(prop)
+    layer.Save()
+
+
+def _under_render_purpose(path: Path, pipe_name: str) -> None:
+    """Move the exported model under ``/geo/render`` with purpose ``render``; ``/mtl`` stays."""
+    layer = Sdf.Layer.FindOrOpen(str(path))
+    root = layer.GetPrimAtPath(f"/{pipe_name}")
+    exported = [child for child in root.nameChildren if child.name != _MATERIALS]
+    taken = sorted(child.name for child in exported if child.name in (_GEOMETRY, _MATERIALS))
+    if taken:
+        raise PiperError(
+            f"rename the top-level node {', '.join(taken)}: Piper puts the model under "
+            f"/{pipe_name}/{_GEOMETRY}/{_RENDER} and materials under /{pipe_name}/{_MATERIALS}"
+        )
+    geo = Sdf.PrimSpec(root, _GEOMETRY, Sdf.SpecifierDef, "Scope")
+    render = Sdf.PrimSpec(geo, _RENDER, Sdf.SpecifierDef, "Xform")
+    purpose = Sdf.AttributeSpec(render, "purpose", Sdf.ValueTypeNames.Token, Sdf.VariabilityUniform)
+    purpose.default = _RENDER
+    edit = Sdf.BatchNamespaceEdit()
+    for child in exported:
+        edit.Add(Sdf.NamespaceEdit.Reparent(child.path, render.path, -1))
+    if not layer.Apply(edit):
+        raise PiperError(
+            f"could not move the exported model under /{pipe_name}/{_GEOMETRY}/{_RENDER}"
+        )
     layer.Save()

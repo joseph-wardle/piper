@@ -1,32 +1,32 @@
-"""Publishing a product: an exported USD layer becomes an immutable, registered version.
-
-A version directory is the authority for what was published and which numbers
-are taken. The registry indexes a version only once it is installed.
-"""
+"""Publishing: a component becomes an immutable version, pinned by a new asset version."""
 
 import errno
 import os
 import secrets
 import shutil
+import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 
 from pxr import Ar, Sdf, Tf, Usd, UsdUtils
 
 from piper.errors import PiperError, RegistryError
 from piper.registry import Registry
 from piper.tracker import Asset
-from piper_studio import layout
+from piper_studio import compose, layout
+from piper_studio.current import current, make_current
 from piper_studio.storage import asset_directory
 
-_LAYER_SUFFIXES = (".usd", ".usda", ".usdc")
 # Reserved inside a version for the work file a publish captures.
 _SOURCE = "src"
 _INSTALL_ATTEMPTS = 5
+_NO_VERSIONS: Mapping[str, int] = MappingProxyType({})
 
 
 @dataclass(frozen=True, slots=True)
-class PublishResult:
+class ProductVersion:
     """An installed version of an asset's product, and its registry record.
 
     ``path`` is the version's root layer. ``record_id`` is None when the
@@ -40,12 +40,145 @@ class PublishResult:
     record_id: str | None
 
 
-class PartialPublishError(PiperError):
+class UnregisteredVersionError(PiperError):
     """The version is installed, but the registry did not record it."""
+
+    def __init__(self, message: str, version: ProductVersion) -> None:
+        super().__init__(message)
+        self.version = version
+
+
+@dataclass(frozen=True, slots=True)
+class PublishResult:
+    """What a publish left: the component, the asset version pinning it, and whether it is current."""
+
+    component: ProductVersion
+    asset_version: ProductVersion | None
+    pins: Mapping[str, int]
+    current: bool
+
+
+class PartialPublishError(PiperError):
+    """The component is installed, but a later step failed; ``result`` says what exists."""
 
     def __init__(self, message: str, result: PublishResult) -> None:
         super().__init__(message)
         self.result = result
+
+
+def publish(
+    registry: Registry,
+    *,
+    root: PurePosixPath,
+    asset: Asset,
+    product: str,
+    layer: PurePosixPath,
+    source: PurePosixPath | None = None,
+    with_versions: Mapping[str, int] = _NO_VERSIONS,
+) -> PublishResult:
+    """Publish a component, build the asset version pinning it, and make that current."""
+    if product == compose.ASSET:
+        raise PiperError(
+            f"cannot publish {compose.ASSET}: an asset version is built by publishing a "
+            "component, such as geo or mtl"
+        )
+    if Path(layer).stem != product:
+        raise PiperError(
+            f"cannot publish {layer} as {product}: a component's root layer is named for its "
+            f"product, {product}.usd, {product}.usda, or {product}.usdc"
+        )
+    if product in with_versions:
+        raise PiperError(f"cannot pin {product} while publishing {product}")
+    before = current(root, asset)
+    pins = compose.pins(root, asset, before) if before is not None else {}
+    for named, version in with_versions.items():
+        compose.layer_path(root, asset, named, version)
+        pins[named] = version
+
+    try:
+        component = publish_product(
+            registry, root=root, asset=asset, product=product, layer=layer, source=source
+        )
+    except UnregisteredVersionError as exc:
+        raise PartialPublishError(
+            f"{exc}; no asset version was built",
+            PublishResult(exc.version, None, {**pins, product: exc.version.version}, current=False),
+        ) from exc
+    pins[product] = component.version
+    published = f"published {_named(component)}"
+
+    with tempfile.TemporaryDirectory(prefix="piper_asset_", ignore_cleanup_errors=True) as staged:
+        try:
+            entry = compose.write_asset_version(Path(staged), root=root, asset=asset, pins=pins)
+            asset_version = publish_product(
+                registry, root=root, asset=asset, product=compose.ASSET, layer=PurePosixPath(entry)
+            )
+        except UnregisteredVersionError as exc:
+            raise PartialPublishError(
+                f"{published}; {exc}; `piper current` makes it current",
+                PublishResult(component, exc.version, pins, current=False),
+            ) from exc
+        except PiperError as exc:
+            raise PartialPublishError(
+                f"{published}, but could not build the asset version: {exc}",
+                PublishResult(component, None, pins, current=False),
+            ) from exc
+    published = f"{published} and {_named(asset_version)}"
+
+    moved = current(root, asset)
+    if moved != before:
+        why = _moved_meanwhile(root, asset, moved, product, asset_version, pins)
+        raise PartialPublishError(
+            f"{published}, but {why}", PublishResult(component, asset_version, pins, current=False)
+        )
+    try:
+        make_current(root, asset, asset_version.version)
+    except PiperError as exc:
+        raise PartialPublishError(
+            f"{published}, but could not make it current: {exc}",
+            PublishResult(component, asset_version, pins, current=False),
+        ) from exc
+    return PublishResult(component, asset_version, pins, current=True)
+
+
+def composition(result: PublishResult) -> str:
+    """What the asset version pins and whether it is current, as one sentence."""
+    if result.asset_version is None:
+        return "no asset version was built"
+    pinned = [f"{product} {layout.version_name(n)}" for product, n in sorted(result.pins.items())]
+    listed = " and ".join(pinned) if len(pinned) <= 2 else ", ".join(pinned)
+    state = "is current" if result.current else "is not current"
+    return f"{_named(result.asset_version)} pins {listed}, and {state}"
+
+
+def _named(version: ProductVersion) -> str:
+    return f"{version.product} {layout.version_name(version.version)}"
+
+
+def _moved_meanwhile(
+    root: PurePosixPath,
+    asset: Asset,
+    moved: int | None,
+    product: str,
+    built: ProductVersion,
+    pins: Mapping[str, int],
+) -> str:
+    """Why the asset version ``built``, pinning ``pins``, is not current, and the remedy."""
+    if moved is None:
+        return "nothing is current any more; `piper current` makes one"
+    differing = {
+        name: number
+        for name, number in compose.pins(root, asset, moved).items()
+        if pins.get(name) != number
+    }
+    listed = ", ".join(f"{name} {layout.version_name(n)}" for name, n in sorted(differing.items()))
+    became = (
+        f"{compose.ASSET} {layout.version_name(moved)} became current while you were "
+        f"publishing, pinning {listed}"
+    )
+    if set(differing) <= {product}:
+        return f"{became}; `piper current` makes {_named(built)} current instead"
+    return f"{became}; {_named(built)} is not current; publish again to compose with it"
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +191,7 @@ class _Dependencies:
     dirty: tuple[str, ...]
 
 
-def publish(
+def publish_product(
     registry: Registry,
     *,
     root: PurePosixPath,
@@ -66,7 +199,7 @@ def publish(
     product: str,
     layer: PurePosixPath,
     source: PurePosixPath | None = None,
-) -> PublishResult:
+) -> ProductVersion:
     """Install ``layer`` and the files it depends on as the product's next version; register it.
 
     ``source`` is the work file ``layer`` was exported from. The version keeps a
@@ -105,12 +238,12 @@ def publish(
     try:
         record_id = registry.register(asset, product=product, version=version, path=path)
     except RegistryError as exc:
-        raise PartialPublishError(
+        raise UnregisteredVersionError(
             f"installed {path}, but could not register it: {exc}; "
             "publishing again installs another version",
-            PublishResult(asset, product, version, path, record_id=None),
+            ProductVersion(asset, product, version, path, record_id=None),
         ) from exc
-    return PublishResult(asset, product, version, path, record_id)
+    return ProductVersion(asset, product, version, path, record_id)
 
 
 def _product_root(root: PurePosixPath, asset: Asset, product: str) -> Path:
@@ -124,7 +257,7 @@ def _product_root(root: PurePosixPath, asset: Asset, product: str) -> Path:
 
 
 def _check_exported(exported: Path) -> None:
-    if exported.suffix not in _LAYER_SUFFIXES:
+    if exported.suffix not in layout.LAYER_SUFFIXES:
         raise PiperError(f"cannot publish {exported}: it is not a .usd, .usda, or .usdc layer")
     if not exported.is_file():
         raise PiperError(f"cannot publish {exported}: it does not exist")

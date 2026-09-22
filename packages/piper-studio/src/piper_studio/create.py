@@ -6,7 +6,7 @@ from pathlib import Path, PurePosixPath
 
 from piper.errors import PiperError
 from piper.tracker import Asset, Tracker
-from piper_studio.layout import asset_root, slug
+from piper_studio.layout import asset_root, slug, usable_pipe_name
 from piper_studio.storage import unusable_pipe_name
 
 
@@ -70,8 +70,14 @@ def create_asset(
     assets = tracker.find_assets("")
     existing = next((asset for asset in assets if slug(asset.name) == slug(name)), None)
     pipe_name = existing.pipe_name if existing and existing.pipe_name else slug(name)
-    if existing is not None and slug(pipe_name) != pipe_name:
+    if existing is not None and not usable_pipe_name(pipe_name):
         raise PiperError(unusable_pipe_name(existing))
+    if not usable_pipe_name(pipe_name):
+        raise PiperError(
+            f"cannot create asset {name!r}: its paths would be named {pipe_name!r}, and a USD "
+            f"prim's name cannot start with a digit; name it to start with a letter"
+            f"{_lettered(name)}"
+        )
     directory = asset_root(root, folder, pipe_name)
     directory_exists = Path(directory).is_dir()
 
@@ -121,3 +127,11 @@ def create_asset(
     return CreateAssetResult(
         asset, directory, asset_created, pipe_name_given, directory_created=not directory_exists
     )
+
+
+def _lettered(name: str) -> str:
+    """The same name with the words that start with a digit moved last: ``Printer 3D``."""
+    words = name.split()
+    lettered = [word for word in words if slug(word)[:1].isalpha()]
+    numbered = [word for word in words if not slug(word)[:1].isalpha()]
+    return f", such as {' '.join(lettered + numbered)!r}" if lettered else ""

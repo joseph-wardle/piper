@@ -23,6 +23,7 @@ def test_a_renamed_asset_keeps_the_directory_its_pipe_name_gave_it(tmp_path: Pat
         pytest.param(replace(PAN, folder=None), "give it a folder in the tracker", id="folder"),
         pytest.param(replace(PAN, pipe_name=None), "`piper create asset` gives it one", id="name"),
         pytest.param(replace(PAN, pipe_name="The Pan"), "correct it in the tracker", id="typed"),
+        pytest.param(replace(PAN, pipe_name="3d_pan"), "starts with a letter", id="digit"),
         pytest.param(replace(PAN, pipe_name="kettle"), "`piper create asset` makes it", id="made"),
     ],
 )

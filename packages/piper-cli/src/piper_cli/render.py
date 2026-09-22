@@ -1,7 +1,7 @@
 """Presents operation results."""
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
 
 from rich import box
@@ -17,8 +17,8 @@ from piper_studio.production import PRODUCTION_ENV
 from piper_studio.profile import Profile
 
 if TYPE_CHECKING:
-    # For its type only: importing the module loads USD.
-    from piper_studio.publish import PublishResult
+    # For their types only: importing the module loads USD.
+    from piper_studio.publish import ProductVersion, PublishResult
 
 _MISSING = "—"
 
@@ -81,13 +81,13 @@ def create_asset_result_as_text(result: CreateAssetResult) -> None:
 
 
 def publish_result_as_json(result: "PublishResult", error: str | None = None) -> None:
-    """Write the version a publish installed to stdout as one JSON object."""
+    """Write what a publish left to stdout as one JSON object."""
     payload: dict[str, object] = {
-        "asset": _asset_json(result.asset),
-        "product": result.product,
-        "version": result.version,
-        "path": str(result.path),
-        "record_id": result.record_id,
+        "asset": _asset_json(result.component.asset),
+        "component": _version_json(result.component),
+        "asset_version": _version_json(result.asset_version) if result.asset_version else None,
+        "pins": dict(result.pins),
+        "current": result.current,
     }
     if error is not None:
         payload["error"] = error
@@ -95,10 +95,40 @@ def publish_result_as_json(result: "PublishResult", error: str | None = None) ->
 
 
 def publish_result_as_text(result: "PublishResult") -> None:
-    """Write which version a publish installed, and its root layer."""
-    version = version_name(result.version)
-    print(f"Published {result.product} {version} of {result.asset.name!r}")
-    print(result.path)
+    """Write which versions a publish installed, their root layers, and what is current."""
+    # Imported here: the module loads USD, which only a publish pays for.
+    from piper_studio.publish import composition
+
+    component = result.component
+    named = f"{component.product} {version_name(component.version)}"
+    print(f"Published {named} of {component.asset.name!r}")
+    print(component.path)
+    print(composition(result))
+    if result.asset_version is not None:
+        print(result.asset_version.path)
+
+
+def current_as_json(asset: Asset, version: int | None, pins: Mapping[str, int]) -> None:
+    """Write which asset version is current, and its pins, as one JSON object."""
+    print(json.dumps({"asset": _asset_json(asset), "version": version, "pins": dict(pins)}))
+
+
+def current_as_text(asset: Asset, version: int | None, pins: Mapping[str, int]) -> None:
+    """Write which asset version consumers of ``asset`` get by default."""
+    if version is None:
+        print(f"Nothing is current for {asset.name!r}")
+        return
+    pinned = ", ".join(f"{product} {version_name(n)}" for product, n in sorted(pins.items()))
+    print(f"Current for {asset.name!r}: asset {version_name(version)} pins {pinned or 'nothing'}")
+
+
+def _version_json(version: "ProductVersion") -> dict[str, object]:
+    return {
+        "product": version.product,
+        "version": version.version,
+        "path": str(version.path),
+        "record_id": version.record_id,
+    }
 
 
 def profile_as_text(profile: Profile, overridden: str | None) -> None:
