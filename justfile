@@ -1,11 +1,12 @@
 default:
     @just --list
 
-# The second environment is the one Maya imports from: only what piper-maya's
-# manifest names, so nothing in it can shadow a package Maya brings.
+# A host imports from its package's own environment: only what that manifest
+# names, so nothing in it can shadow a package the host brings.
 sync:
     uv sync
     UV_PROJECT_ENVIRONMENT=packages/piper-maya/.venv uv sync --package piper-maya --no-dev --locked
+    UV_PROJECT_ENVIRONMENT=packages/piper-houdini/.venv uv sync --package piper-houdini --no-dev --locked
 
 format:
     uv run ruff format .
@@ -35,9 +36,11 @@ isolate:
     uv run --isolated --no-project --with ./packages/piper-core \
         python -c "import piper, piper.errors, piper.find, piper.registry, piper.tracker"
 
-# Piper inside a real Maya. Kept out of `check`: it needs Maya on the machine.
+# Piper inside a real Maya and a real Houdini. Kept out of `check`: they need
+# the hosts on the machine.
 test-host:
     uv run python packages/piper-maya/tests/host_maya.py
+    uv run python packages/piper-houdini/tests/host_houdini.py
 
 build:
     uv build --all-packages

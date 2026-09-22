@@ -50,7 +50,7 @@ class UnregisteredVersionError(PiperError):
 
 @dataclass(frozen=True, slots=True)
 class PublishResult:
-    """What a publish left: the component, the asset version pinning it, and whether it is current."""
+    """The component, the asset version pinning it, and whether that version is current."""
 
     component: ProductVersion
     asset_version: ProductVersion | None
@@ -149,6 +149,29 @@ def composition(result: PublishResult) -> str:
     listed = " and ".join(pinned) if len(pinned) <= 2 else ", ".join(pinned)
     state = "is current" if result.current else "is not current"
     return f"{_named(result.asset_version)} pins {listed}, and {state}"
+
+
+def current_line(version: int | None, pins: Mapping[str, int]) -> str:
+    """What is current and what it pins, as one sentence for a publish dialog."""
+    if version is None:
+        return "Nothing is current."
+    pinned = ", ".join(f"{product} {layout.version_name(n)}" for product, n in sorted(pins.items()))
+    return f"Current {layout.version_name(version)} pins {pinned}."
+
+
+def other_versions(
+    root: PurePosixPath, asset: Asset, pins: Mapping[str, int], product: str
+) -> dict[str, tuple[list[int], int]]:
+    """Each other pinned component's installed versions, and the one ``pins`` holds.
+
+    A publish of ``product`` pins that one unless ``with_versions`` names
+    another, so a dialog starts each component's version menu on it.
+    """
+    return {
+        named: (compose.versions(root, asset, named), pinned)
+        for named, pinned in sorted(pins.items())
+        if named != product
+    }
 
 
 def _named(version: ProductVersion) -> str:

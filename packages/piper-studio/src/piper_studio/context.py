@@ -19,7 +19,10 @@ class Context:
     extension: str
 
 
-CONTEXTS = (Context(name="modeling", subject="asset", host="maya", extension="mb"),)
+CONTEXTS = (
+    Context(name="modeling", subject="asset", host="maya", extension="mb"),
+    Context(name="lookdev", subject="asset", host="houdini", extension="hipnc"),
+)
 
 
 def context_named(name: str, *, subject: str) -> Context:

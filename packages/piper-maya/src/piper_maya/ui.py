@@ -1,18 +1,25 @@
-"""What Piper adds to Maya's interface: its menu, and the dialogs that open and publish work."""
+"""What Piper adds to Maya's interface: its menu, and what opens, previews, and publishes work."""
 
 import functools
-from collections.abc import Callable
+import os
+import shutil
+import subprocess
+import tempfile
+import threading
+from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import ParamSpec
 
-from maya import cmds
+from maya import cmds, utils
 
 from piper.errors import PiperError
 from piper.tracker import Tracker
 from piper_maya.work import open_work
-from piper_studio import profile
+from piper_studio import launch, profile
 from piper_studio.context import CONTEXTS, context_named
 from piper_studio.layout import version_name
 from piper_studio.production import Production
+from piper_studio.profile import Profile
 from piper_studio.registry import registry_for
 from piper_studio.tracker import tracker_for
 
@@ -31,9 +38,13 @@ def refusals_shown(action: Callable[_P, None]) -> Callable[_P, None]:
         try:
             action(*args, **kwargs)
         except PiperError as refusal:
-            cmds.confirmDialog(title="Piper", message=str(refusal), button=["OK"], icon="warning")
+            show_refusal(str(refusal))
 
     return shown
+
+
+def show_refusal(message: str) -> None:
+    cmds.confirmDialog(title="Piper", message=message, button=["OK"], icon="warning")
 
 
 def start(asset_id: str | None = None, context_name: str | None = None) -> None:
@@ -44,13 +55,14 @@ def start(asset_id: str | None = None, context_name: str | None = None) -> None:
     cmds.menu(_MENU, label="Piper", parent="MayaWindow")
     cmds.menuItem(label="Open Work…", command=lambda *_: show_open_work())
     cmds.menuItem(label="Publish…", command=lambda *_: show_publish())
+    cmds.menuItem(label="Preview…", command=lambda *_: show_preview())
     if asset_id is not None and context_name is not None:
         _open_launched_work(asset_id, context_name)
 
 
 @refusals_shown
 def _open_launched_work(asset_id: str, context_name: str) -> None:
-    production, tracker = _production_and_tracker()
+    production, tracker = _production_and_tracker(profile.active())
     asset = tracker.asset(asset_id)
     if asset is None:
         raise PiperError(f"{production.name} has no asset with the id {asset_id}")
@@ -60,7 +72,7 @@ def _open_launched_work(asset_id: str, context_name: str) -> None:
 @refusals_shown
 def show_open_work() -> None:
     """Show the dialog an artist picks an asset and a context in."""
-    production, tracker = _production_and_tracker()
+    production, tracker = _production_and_tracker(profile.active())
     found = list(tracker.find_assets(""))
     contexts = [c.name for c in CONTEXTS if (c.subject, c.host) == ("asset", "maya")]
 
@@ -106,27 +118,29 @@ def show_publish() -> None:
     """Show what the open scene would publish, and publish it when the artist agrees."""
     # Imported here: loading USD takes most of a second, and Maya's startup does not wait for it.
     from piper_maya.publish import PRODUCT, materials, publish_work, scene_asset, selection
-    from piper_studio.publish import composition
+    from piper_studio import compose
+    from piper_studio.current import current
+    from piper_studio.publish import composition, current_line, other_versions
 
-    production, tracker = _production_and_tracker()
+    production, tracker = _production_and_tracker(profile.active())
+    root = production.root
     asset = scene_asset(tracker, production)
-    message = (
-        f"Publish to {asset.name}, {PRODUCT}?\n\n"
-        f"Selected: {_listed(selection())}\n"
-        f"Materials: {_listed(materials())}"
-    )
+    now = current(root, asset)
+    pins = compose.pins(root, asset, now) if now is not None else {}
+    lines = [
+        f"Publish to {asset.name}, {PRODUCT}?",
+        "",
+        f"Selected: {_listed(selection())}",
+        f"Materials: {_listed(materials())}",
+        "",
+        current_line(now, pins),
+    ]
     unsaved = cmds.file(query=True, modified=True)
     buttons = ["Save and Publish", "Publish Without Saving"] if unsaved else ["Publish"]
-    chosen = cmds.confirmDialog(
-        title="Piper",
-        message=message,
-        button=[*buttons, "Cancel"],
-        defaultButton=buttons[0],
-        cancelButton="Cancel",
-        dismissString="Cancel",
-    )
-    if chosen not in buttons:
+    answer = publish_window(lines, other_versions(root, asset, pins, PRODUCT), buttons)
+    if answer is None:
         return
+    chosen, with_versions = answer
     if chosen == "Save and Publish":
         try:
             cmds.file(save=True)
@@ -138,7 +152,7 @@ def show_publish() -> None:
 
     cmds.waitCursor(state=True)
     try:
-        result = publish_work(registry_for(production), production, asset)
+        result = publish_work(registry_for(production), production, asset, with_versions)
     finally:
         cmds.waitCursor(state=False)
     cmds.confirmDialog(
@@ -149,14 +163,91 @@ def show_publish() -> None:
     )
 
 
+@refusals_shown
+def show_preview() -> None:
+    """Open the selection in usdview, composed as a publish would compose it, installing nothing."""
+    from piper_maya.publish import preview_work, scene_asset
+
+    active = profile.active()
+    production, tracker = _production_and_tracker(active)
+    asset = scene_asset(tracker, production)
+    directory = Path(tempfile.mkdtemp(prefix="piper_preview_"))
+    try:
+        entry = preview_work(production, asset, directory)
+        viewer = subprocess.Popen(
+            launch.usdview_command(active, entry),
+            env=launch.compose(os.environ, launch.usdview_variables(active)),
+            cwd=launch.working_directory(active),
+            stderr=subprocess.PIPE,
+        )
+    except BaseException:
+        shutil.rmtree(directory, ignore_errors=True)
+        raise
+    threading.Thread(target=_remove_after_viewing, args=(viewer, directory), daemon=True).start()
+
+
+def _remove_after_viewing(viewer: subprocess.Popen[bytes], directory: Path) -> None:
+    _, said = viewer.communicate()
+    shutil.rmtree(directory, ignore_errors=True)
+    if viewer.returncode != 0:
+        # Maya's interface is the main thread's; this runs there when Maya is next idle.
+        utils.executeDeferred(
+            show_refusal,
+            f"usdview closed with status {viewer.returncode}\n\n"
+            f"{said.decode(errors='replace').strip()[-800:]}",
+        )
+
+
+def publish_window(
+    lines: list[str], offered: Mapping[str, tuple[list[int], int]], buttons: list[str]
+) -> tuple[str, dict[str, int]] | None:
+    """Show ``lines``, a version menu per product ``offered``, and ``buttons``.
+
+    ``offered`` maps a product to its installed versions and the one to start
+    on. Returns the button pressed and the versions chosen, or None for Cancel.
+    """
+    menus: dict[str, str] = {}
+    chosen: dict[str, int] = {}
+
+    def press(label: str, *_: object) -> None:
+        # Read before the dialog is dismissed: its controls are gone once it returns.
+        for product, (versions, _start) in offered.items():
+            picked = cmds.optionMenu(menus[product], query=True, select=True)
+            chosen[product] = versions[picked - 1]
+        cmds.layoutDialog(dismiss=label)
+
+    def build() -> None:
+        # layoutDialog makes its form layout the current parent while this runs.
+        form = cmds.setParent(query=True)
+        column = cmds.columnLayout(adjustableColumn=True, rowSpacing=6, columnAttach=("both", 8))
+        cmds.text(label="\n".join(lines), align="left")
+        for product, (versions, start) in offered.items():
+            menus[product] = cmds.optionMenu(label=product)
+            for number in versions:
+                cmds.menuItem(label=version_name(number))
+            cmds.optionMenu(menus[product], edit=True, value=version_name(start))
+        cmds.rowLayout(numberOfColumns=len(buttons) + 1)
+        for label in buttons:
+            cmds.button(label=label, command=functools.partial(press, label))
+        cmds.button(label="Cancel", command=lambda *_: cmds.layoutDialog(dismiss="Cancel"))
+        cmds.formLayout(
+            form, edit=True, attachForm=[(column, side, 0) for side in ("top", "left", "right")]
+        )
+
+    answer = cmds.layoutDialog(ui=build, title="Piper")
+    if answer not in buttons:
+        return None
+    return answer, chosen
+
+
 def _listed(names: list[str]) -> str:
     listed = ", ".join(names[:_NAMES_LISTED]) or "none"
     more = len(names) - _NAMES_LISTED
     return f"{listed}, and {more} more" if more > 0 else listed
 
 
-def _production_and_tracker() -> tuple[Production, Tracker]:
-    production = profile.active().production
+def _production_and_tracker(active: Profile) -> tuple[Production, Tracker]:
+    production = active.production
     if production is None:
         raise PiperError(
             "this Maya is not working in a production; "

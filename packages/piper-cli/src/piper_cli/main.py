@@ -59,23 +59,30 @@ def launch_maya_command() -> None:
     launch.maya(profile.active())
 
 
+@launch_app.command(name="houdini")
+def launch_houdini_command() -> None:
+    """Become Houdini, working in the active profile, with Piper's code loaded."""
+    launch.houdini(profile.active())
+
+
 @app.command(name="open")
 def open_command(asset: str, context: str, /) -> None:
-    """Become Maya, with an asset's work in a context open.
+    """Become the context's host, with an asset's work in that context open.
 
     Parameters
     ----------
     asset
         The asset's name, or a part of it no other asset's name has.
     context
-        The kind of work, such as modeling.
+        The kind of work, such as modeling or lookdev.
     """
     production = _active_production()
     chosen = context_named(context, subject="asset")
     found = _asset_matching(tracker_for(production), asset)
     prepare_work(root=production.root, asset=found, context=chosen)
     print(f"Opening {chosen.name} work on {found.name!r}")
-    launch.maya(profile.active(), work=(found, chosen))
+    become = launch.maya if chosen.host == "maya" else launch.houdini
+    become(profile.active(), work=(found, chosen))
 
 
 @app.command(name="find")

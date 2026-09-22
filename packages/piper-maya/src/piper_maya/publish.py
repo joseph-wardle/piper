@@ -1,7 +1,9 @@
-"""Publishing modeling work from Maya."""
+"""Publishing modeling work from Maya, and looking at it composed before publishing."""
 
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 
 from maya import cmds
 from pxr import Sdf, Usd, UsdShade
@@ -9,12 +11,12 @@ from pxr import Sdf, Usd, UsdShade
 from piper.errors import PiperError
 from piper.registry import Registry
 from piper.tracker import Asset, Tracker
-from piper_maya.work import ASSET_ID_KEY, CONTEXT_KEY, PRODUCTION_KEY, scene_stamp
-from piper_studio.context import context_named
-from piper_studio.layout import work_file
+from piper_maya.work import scene_stamp
+from piper_studio import compose
+from piper_studio.current import current
 from piper_studio.production import Production
 from piper_studio.publish import PublishResult, publish
-from piper_studio.storage import asset_directory
+from piper_studio.work import stamped_asset
 
 PRODUCT = "geo"
 _GEOMETRY = "geo"
@@ -25,25 +27,8 @@ _REMEDY = "open the asset's work with Piper > Open Work…, then import this sce
 
 def scene_asset(tracker: Tracker, production: Production) -> Asset:
     """The asset the open scene is work on, refusing a scene that is not that work's own file."""
-    stamp = scene_stamp()
-    asset_id = stamp[ASSET_ID_KEY]
-    # A scene Maya has never saved carries no stamp, so this refuses it too.
-    if stamp[PRODUCTION_KEY] != production.name or not asset_id:
-        raise PiperError(f"this scene is not {production.name} work; {_REMEDY}")
-    asset = tracker.asset(asset_id)
-    if asset is None:
-        raise PiperError(
-            f"this scene is work on an asset {production.name} does not have (id {asset_id})"
-        )
-    context = context_named(stamp[CONTEXT_KEY] or "", subject="asset")
-    expected = Path(work_file(PurePosixPath(asset_directory(production.root, asset)), context))
     scene = Path(cmds.file(query=True, sceneName=True))
-    if scene.resolve() != expected.resolve():
-        raise PiperError(
-            f"this scene is {scene}, not {asset.name}'s {context.name} work at {expected}; "
-            f"{_REMEDY}"
-        )
-    return asset
+    return stamped_asset(tracker, production, scene_stamp(), scene, _REMEDY)
 
 
 def selection() -> list[str]:
@@ -63,46 +48,39 @@ def materials() -> list[str]:
     )
 
 
-def publish_work(registry: Registry, production: Production, asset: Asset) -> PublishResult:
+def publish_work(
+    registry: Registry,
+    production: Production,
+    asset: Asset,
+    with_versions: Mapping[str, int] = MappingProxyType({}),
+) -> PublishResult:
     """Publish the selection as ``asset``'s geometry, with the scene as its source.
 
     ``asset`` is what ``scene_asset`` returned. The source is the work file when
     the scene has no unsaved changes, and otherwise the scene as a save would
     have written it; the work file is never saved or changed here.
+    ``with_versions`` is what the asset version pins instead of current's pins.
     """
-    selection()
-    # Usable as a prim name: `scene_asset` refused the scene otherwise.
-    pipe_name = asset.pipe_name or ""
     scene = Path(cmds.file(query=True, sceneName=True))
     # A cleanup that fails must not replace the result of a publish that happened.
     with tempfile.TemporaryDirectory(
         prefix="piper_publish_", ignore_cleanup_errors=True
     ) as directory:
-        layer = Path(directory) / f"{PRODUCT}.usd"
+        layer = export_selection(Path(directory), asset)
         source = scene
-        try:
-            cmds.loadPlugin("mayaUsdPlugin", quiet=True)
-            cmds.mayaUSDExport(
-                file=str(layer),
-                selection=True,
-                rootPrim=pipe_name,
-                rootPrimType="xform",
-                exportComponentTags=False,
-                metersPerUnit=1.0,
-                exportDistanceUnit=True,
-            )
-            if cmds.file(query=True, modified=True):
-                source = Path(directory) / scene.name
+        if cmds.file(query=True, modified=True):
+            source = Path(directory) / scene.name
+            try:
                 cmds.file(
                     str(source),
                     exportAll=True,
                     preserveReferences=True,
                     type=cmds.file(query=True, type=True)[0],
                 )
-        except RuntimeError as exc:
-            raise PiperError(f"Maya could not export the scene ({str(exc).strip()})") from exc
-        _empty_materials(layer)
-        _under_render_purpose(layer, pipe_name)
+            except RuntimeError as exc:
+                raise PiperError(
+                    f"Maya could not write a copy of the scene ({str(exc).strip()})"
+                ) from exc
         return publish(
             registry,
             root=production.root,
@@ -110,7 +88,44 @@ def publish_work(registry: Registry, production: Production, asset: Asset) -> Pu
             product=PRODUCT,
             layer=PurePosixPath(layer),
             source=PurePosixPath(source),
+            with_versions=with_versions,
         )
+
+
+def preview_work(production: Production, asset: Asset, directory: Path) -> Path:
+    """Write into ``directory`` what publishing the selection would compose; return the entry."""
+    root = production.root
+    layer = export_selection(directory, asset)
+    now = current(root, asset)
+    pins = compose.pins(root, asset, now) if now is not None else {}
+    return compose.write_preview(directory, root=root, asset=asset, pins=pins, layer=layer)
+
+
+def export_selection(directory: Path, asset: Asset) -> Path:
+    """Export the selection into ``directory`` as ``asset``'s geometry layer.
+
+    In metres, the model under ``/geo/render``, and each material an empty slot.
+    """
+    selection()
+    # Usable as a prim name: `scene_asset` refused the scene otherwise.
+    pipe_name = asset.pipe_name or ""
+    layer = directory / f"{PRODUCT}.usd"
+    try:
+        cmds.loadPlugin("mayaUsdPlugin", quiet=True)
+        cmds.mayaUSDExport(
+            file=str(layer),
+            selection=True,
+            rootPrim=pipe_name,
+            rootPrimType="xform",
+            exportComponentTags=False,
+            metersPerUnit=1.0,
+            exportDistanceUnit=True,
+        )
+    except RuntimeError as exc:
+        raise PiperError(f"Maya could not export the selection ({str(exc).strip()})") from exc
+    _empty_materials(layer)
+    _under_render_purpose(layer, pipe_name)
+    return layer
 
 
 def _empty_materials(path: Path) -> None:

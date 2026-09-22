@@ -9,7 +9,7 @@ Right now it is a sandbox for me to test workflows for my capstone film
 production. `piper find` reads assets and shots from the real tracker,
 `piper create asset` creates an asset there and its directory in storage,
 `piper publish` installs an immutable version of an exported USD product, and
-`piper open` starts Maya on an asset's work.
+`piper open` starts Maya or Houdini on an asset's work.
 
 ## Layout
 
@@ -19,7 +19,8 @@ production. `piper find` reads assets and shots from the real tracker,
 | `packages/piper-studio` | `piper-studio` | `piper_studio` | Studio conventions, production config, provider selection |
 | `packages/piper-shotgrid` | `piper-shotgrid` | `piper_shotgrid` | ShotGrid behind Piper's contracts |
 | `packages/piper-cli` | `piper-cli` | `piper_cli` | The `piper` command |
-| `packages/piper-maya` | `piper-maya` | `piper_maya` | Piper inside Maya: its menu, and opening and publishing work |
+| `packages/piper-maya` | `piper-maya` | `piper_maya` | Piper inside Maya: its menu, and opening, previewing, and publishing work |
+| `packages/piper-houdini` | `piper-houdini` | `piper_houdini` | Piper inside Houdini: its menu, and opening and publishing work |
 
 `piper-core` is imported in-process by DCC integrations, so it targets the
 2025 VFX Reference Platform python version `3.11.x`. This project will update 
@@ -33,9 +34,10 @@ Requires [uv](https://docs.astral.sh/uv/) and [just](https://just.systems/).
 just sync
 ```
 
-This builds two environments from one lock: the project's own, and
-`packages/piper-maya/.venv`, which holds only what `piper-maya` names and is the
-one directory of third-party packages Maya imports from.
+This builds three environments from one lock: the project's own, and one per
+host, `packages/piper-maya/.venv` and `packages/piper-houdini/.venv`, each holding
+only what its package names and being the one directory of third-party packages
+that host imports from.
 
 ## Use
 
@@ -70,6 +72,7 @@ project = 716
 
 [software]
 maya = "2026"
+houdini = "21.0"
 ```
 
 `root` is where the production is stored. `types` are the asset types artists
@@ -116,11 +119,12 @@ copy instead: `project = 782` and `root = "/groups/sandwich/04_temp"`.
 ```
 piper open "Frying Pan" modeling
 piper open fry modeling            # a part of the name only one asset has
+piper open fry lookdev             # in Houdini
 ```
 
-`open` becomes Maya on the asset's one modeling file,
-`<root>/asset/kitchen/frying_pan/work/modeling/frying_pan.mb`, creating and saving
-it the first time, with Maya's project set to that directory. Inside Maya,
+`open` becomes the context's host on the asset's one work file: for modeling,
+Maya on `<root>/asset/kitchen/frying_pan/work/modeling/frying_pan.mb`, creating
+and saving it the first time, with Maya's project set to that directory. Inside Maya,
 **Piper ▸ Open Work…** does the same from a list. The scene is stamped with its
 production, asset, and context, which is how publishing from Maya knows what
 it is. A file copied there from another asset becomes this asset's work: Piper
@@ -129,13 +133,34 @@ artist's, Maya's `workspace.mel` and incremental saves included.
 
 **Piper ▸ Publish…** publishes the selected geometry as the asset's next `geo`
 version, under one root prim named for the asset. Each material is kept as a
-named slot the geometry is bound to, without its shading. The version keeps the
-scene it came from in `src/`. A scene with unsaved changes can be saved first or
+named slot the geometry is bound to, without its shading. The window says what is
+selected, which asset version is current and what it pins, and offers the other
+components' versions to pin, starting on current's. The version keeps the scene
+it came from in `src/`. A scene with unsaved changes can be saved first or
 published as it is, which leaves the work file untouched. Only an asset's own
 work file publishes: import anything else into it first.
 
+**Piper ▸ Preview…** opens the selection in usdview, composed as a publish would
+compose it with what current pins, and installs nothing. The viewer is
+the production's Houdini's usdview, which carries its render delegates, so the
+look can be RenderMan's. What it shows is deleted when it closes, and a viewer
+that closes with an error says so.
+
+Lookdev is Houdini's. **Piper ▸ Open Work…** opens the asset's one lookdev file,
+`work/lookdev/frying_pan.hipnc`, and starts a new one from the asset version that
+is current: in `/stage`, a Sublayer of that version, a Layer Break, a Material
+Library whose prefix is the asset's `mtl` scope, the `OUT_mtl` output a publish
+saves, and below it a dome light, a camera, and Karma render settings for looking,
+which are never published. Materials are named for the slots the geometry left
+under `mtl`. **Piper ▸ Publish…** saves the layer above `OUT_mtl`, says which asset
+version the scene loads and which is current, what each slot was given, and
+offers the other components' versions to pin, then publishes it as the next `mtl`
+version. A layer that sublayers the asset, which a deleted Layer Break does,
+authors outside `mtl`, or names a material for no slot is refused.
+
 ```
 piper launch maya
+piper launch houdini
 ```
 
 Maya is the release the production names, found at `/usr/autodesk/maya<release>`;
@@ -149,13 +174,19 @@ breaks MayaUSD without an import error. Under a production Maya starts in the
 production root, so search-path pins resolve there. Piper becomes Maya, so its
 output is this terminal's and its exit code is the command's.
 
+Houdini is found at `/opt/hfs<release>`, or wherever SideFX's own `HFS` points.
+It starts the same way, in the foreground, with `packages/piper-houdini` on
+`HOUDINI_PATH` for Piper's menu and startup hook, and the production's Houdini
+packages loaded from `<root>/tools/houdini`, which Piper puts on
+`HOUDINI_PACKAGE_DIR` and never reads itself.
+
 ## Checks
 
 With [just](https://just.systems/):
 
 ```
 just check              # lint, typecheck, test, core-isolation
-just test-host          # Piper inside a real Maya; needs Maya installed
+just test-host          # Piper inside a real Maya and Houdini; needs them installed
 just test-integration   # real ShotGrid and storage; needs PIPER_SHOTGRID_KEY
 just build
 ```

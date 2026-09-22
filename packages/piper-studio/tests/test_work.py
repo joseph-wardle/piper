@@ -1,12 +1,15 @@
+import re
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
+from typing import cast
 
 import pytest
 
 from piper.errors import PiperError
-from piper.tracker import Asset
+from piper.tracker import Asset, Tracker
 from piper_studio.context import Context
-from piper_studio.work import prepare_work
+from piper_studio.production import Production, ShotGridConfig, Software
+from piper_studio.work import prepare_work, restamp_notice, stamp, stamped_asset
 
 PAN = Asset(id="7701", name="Frying Pan", type="Prop", folder="kitchen", pipe_name="frying_pan")
 MODELING = Context(name="modeling", subject="asset", host="maya", extension="mb")
@@ -38,3 +41,96 @@ def test_an_asset_with_no_directory_is_not_given_one_by_opening_its_work(root: P
         prepare_work(root=PurePosixPath(root), asset=kettle, context=MODELING)
 
     assert not (root / "asset" / "kitchen" / "kettle").exists()
+
+
+class Assets:
+    """A tracker holding the frying pan and nothing else."""
+
+    def find_assets(self, name_contains: str) -> tuple[Asset, ...]:
+        return (PAN,)
+
+    def asset(self, id: str) -> Asset | None:
+        return PAN if id == PAN.id else None
+
+
+TRACKER = cast("Tracker", Assets())
+
+SANDWICH = Production(
+    name="sandwich",
+    root=PurePosixPath("/unused"),
+    types=("Prop",),
+    shotgrid=ShotGridConfig(site="https://example.invalid", script="piper", project=782),
+    software=Software(),
+)
+
+
+def production_at(root: Path) -> Production:
+    return replace(SANDWICH, root=PurePosixPath(root))
+
+
+def test_a_scene_at_its_work_path_carrying_its_stamp_names_its_asset(root: Path) -> None:
+    production = production_at(root)
+    scene = root / "asset" / "kitchen" / "frying_pan" / "work" / "modeling" / "frying_pan.mb"
+
+    carried = stamp(production, PAN, MODELING)
+    found = stamped_asset(TRACKER, production, carried, scene, "import it")
+
+    assert found == PAN
+
+
+@pytest.mark.parametrize(
+    ("carried", "scene", "refused"),
+    [
+        (
+            {"piper_production": None, "piper_asset_id": None, "piper_context": None},
+            "asset/kitchen/frying_pan/work/modeling/frying_pan.mb",
+            "this scene is not sandwich work; import it",
+        ),
+        (
+            {"piper_production": "other", "piper_asset_id": "7701", "piper_context": "modeling"},
+            "asset/kitchen/frying_pan/work/modeling/frying_pan.mb",
+            "this scene is not sandwich work; import it",
+        ),
+        (
+            {"piper_production": "sandwich", "piper_asset_id": "9", "piper_context": "modeling"},
+            "asset/kitchen/frying_pan/work/modeling/frying_pan.mb",
+            "this scene is work on an asset sandwich does not have (id 9)",
+        ),
+        (
+            {"piper_production": "sandwich", "piper_asset_id": "7701", "piper_context": "modeling"},
+            "elsewhere/frying_pan.mb",
+            "not Frying Pan's modeling work at",
+        ),
+    ],
+)
+def test_any_other_scene_is_refused_with_the_remedy(
+    root: Path, carried: dict[str, str | None], scene: str, refused: str
+) -> None:
+    with pytest.raises(PiperError, match=re.escape(refused)):
+        stamped_asset(TRACKER, production_at(root), carried, root / scene, "import it")
+
+
+def test_a_file_that_was_other_work_is_told_what_it_was_and_is() -> None:
+    carried = stamp(SANDWICH, PAN, MODELING)
+    lookdev = Context(name="lookdev", subject="asset", host="houdini", extension="hipnc")
+    pot = replace(PAN, id="7702", name="Sauce Pot", pipe_name="sauce_pot")
+
+    assert restamp_notice(TRACKER, SANDWICH, carried, pot, lookdev) == (
+        "This file was modeling work on Frying Pan, in sandwich.\n\n"
+        "It is now lookdev work on Sauce Pot, and has been saved that way."
+    )
+
+
+def test_a_file_from_another_production_is_described_without_trusting_its_id() -> None:
+    carried = {"piper_production": "other", "piper_asset_id": "7701", "piper_context": None}
+
+    assert restamp_notice(TRACKER, SANDWICH, carried, PAN, MODELING) == (
+        "This file was unnamed work on an asset this production does not have, in other.\n\n"
+        "It is now modeling work on Frying Pan, and has been saved that way."
+    )
+
+
+def test_a_file_that_carried_nothing_is_new_work_and_told_nothing() -> None:
+    carried = {"piper_production": None, "piper_asset_id": None, "piper_context": None}
+
+    assert restamp_notice(TRACKER, SANDWICH, carried, PAN, MODELING) is None

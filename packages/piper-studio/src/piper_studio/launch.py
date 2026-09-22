@@ -16,6 +16,9 @@ from piper_studio.profile import Profile
 
 MAYA_VERSION = "2026"
 MAYA_USD_VERSION = "0.25.5"
+HOUDINI_VERSION = "21.0"
+WORK_ENV = "PIPER_OPEN"
+"""The work Houdini opens once its interface is up: an asset's id and a context's name."""
 
 
 def maya(profile: Profile, work: tuple[Asset, Context] | None = None) -> NoReturn:
@@ -84,6 +87,73 @@ def maya_variables(profile: Profile) -> dict[str, str | None]:
         "PXR_AR_DEFAULT_SEARCH_PATH": str(root) if root is not None else None,
         "MAYA_MODULE_PATH": str(tools) if tools is not None and tools.is_dir() else None,
     }
+
+
+def houdini(profile: Profile, work: tuple[Asset, Context] | None = None) -> NoReturn:
+    """Launch Houdini, working in ``profile``, with Piper's code and menu on its path.
+
+    ``work`` is an asset and the context of its work for Houdini to open once it is up.
+    """
+    # In the foreground, Houdini's exit is this command's; otherwise its launcher forks it.
+    _exec(
+        houdini_executable(profile),
+        ["-foreground"],
+        houdini_variables(profile, work),
+        directory=working_directory(profile),
+    )
+
+
+def houdini_executable(profile: Profile) -> Path:
+    """The Houdini launcher ``profile`` wants, wherever this machine keeps it."""
+    production = profile.production
+    version = HOUDINI_VERSION
+    if production is not None and production.software.houdini is not None:
+        version = production.software.houdini
+    located = os.environ.get("HFS")
+    install = Path(located) if located else Path(f"/opt/hfs{version}")
+    executable = install / "bin" / "houdini"
+    if not os.access(executable, os.X_OK):
+        hint = (
+            f"point HFS at a Houdini {version} instead"
+            if located
+            else "set HFS if Houdini lives elsewhere on this machine"
+        )
+        raise PiperError(
+            f"{profile.name} needs Houdini {version}, which is not installed at {install}; {hint}"
+        )
+    return executable
+
+
+def houdini_variables(
+    profile: Profile, work: tuple[Asset, Context] | None = None
+) -> dict[str, str | None]:
+    """Every variable Houdini's environment must set or unset. ``None`` unsets."""
+    root = _root(profile)
+    tools = root / "tools" / "houdini" if root is not None else None
+    return {
+        "PYTHONPATH": python_path("houdini"),
+        # Piper's menu and startup hook, then `&`, which Houdini expands to its own path.
+        "HOUDINI_PATH": os.pathsep.join([str(release_root() / "packages" / "piper-houdini"), "&"]),
+        "HOUDINI_PACKAGE_DIR": str(tools) if tools is not None and tools.is_dir() else None,
+        "QT_PLUGIN_PATH": None,
+        PRODUCTION_ENV: str(profile.path) if profile.path is not None else None,
+        "PXR_AR_DEFAULT_SEARCH_PATH": str(root) if root is not None else None,
+        WORK_ENV: f"{work[0].id} {work[1].name}" if work is not None else None,
+    }
+
+
+def usdview_command(profile: Profile, layer: Path) -> list[str]:
+    """usdview on ``layer``, from the production's Houdini, whose render delegates it carries."""
+    binaries = houdini_executable(profile).parent
+    return [str(binaries / "hython"), str(binaries / "usdview"), str(layer)]
+
+
+def usdview_variables(profile: Profile) -> dict[str, str | None]:
+    """Houdini's variables, and no ``LD_LIBRARY_PATH``.
+
+    Maya's launcher leaves Maya's libraries on it, and hython finds Maya's Python there first.
+    """
+    return {**houdini_variables(profile), "LD_LIBRARY_PATH": None}
 
 
 def working_directory(profile: Profile) -> Path | None:

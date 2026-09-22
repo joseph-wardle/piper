@@ -1,5 +1,8 @@
 """The current layer: one per asset, moved whole, readable by anything that opens USD."""
 
+import subprocess
+import sys
+import textwrap
 from pathlib import Path, PurePosixPath
 
 import pytest
@@ -76,3 +79,31 @@ def test_a_current_layer_that_cannot_be_replaced_is_reported(root: PurePosixPath
         current_path(root, PAN).parent.chmod(0o700)
 
     assert current(root, PAN) == 1
+
+
+def test_the_current_layer_is_read_by_a_process_that_imports_nothing_else(
+    root: PurePosixPath,
+) -> None:
+    # `piper current` imports these two modules and nothing else that loads USD.
+    make_current(root, PAN, 2)
+    script = textwrap.dedent(
+        """
+        import sys
+        from pathlib import PurePosixPath
+        from piper.tracker import Asset
+        from piper_studio import compose
+        from piper_studio.current import current
+
+        root = PurePosixPath(sys.argv[1])
+        asset = Asset(
+            id="7701", name="Frying Pan", type="Prop", folder="kitchen", pipe_name="frying_pan"
+        )
+        number = current(root, asset)
+        print(number, compose.pins(root, asset, number))
+        """
+    )
+    read = subprocess.run(
+        [sys.executable, "-c", script, str(root)], capture_output=True, text=True, check=False
+    )
+
+    assert (read.returncode, read.stdout) == (0, "2 {'geo': 2}\n"), read.stderr

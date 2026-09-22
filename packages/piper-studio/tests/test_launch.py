@@ -16,15 +16,18 @@ GENERAL_PROFILE = Profile(name=GENERAL, production=None, path=None)
 
 PAN = Asset(id="7701", name="Frying Pan", type="Prop", folder="kitchen", pipe_name="frying_pan")
 MODELING = Context(name="modeling", subject="asset", host="maya", extension="mb")
+LOOKDEV = Context(name="lookdev", subject="asset", host="houdini", extension="hipnc")
 
 
 @pytest.fixture
 def release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A release directory Piper runs from, with Maya's environment built."""
+    """A release directory Piper runs from, with each host's environment built."""
     release = tmp_path / "release"
     packages = release / "packages"
     (packages / "piper-core" / "src" / "piper").mkdir(parents=True)
-    (packages / "piper-maya" / ".venv" / "lib" / "python3.11" / "site-packages").mkdir(parents=True)
+    for host in ("maya", "houdini"):
+        environment = packages / f"piper-{host}" / ".venv" / "lib" / "python3.11" / "site-packages"
+        environment.mkdir(parents=True)
     installed = packages / "piper-studio" / "src" / "piper_studio" / "__init__.py"
     installed.parent.mkdir(parents=True)
     installed.touch()
@@ -32,7 +35,7 @@ def release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return release
 
 
-def production_at(root: Path, maya: str | None = None) -> Profile:
+def production_at(root: Path, maya: str | None = None, houdini: str | None = None) -> Profile:
     """A profile whose production is stored under ``root``."""
     return Profile(
         name="sandwich",
@@ -41,7 +44,7 @@ def production_at(root: Path, maya: str | None = None) -> Profile:
             root=PurePosixPath(root),
             types=("Prop",),
             shotgrid=ShotGridConfig(site="https://example.invalid", script="piper", project=782),
-            software=Software(maya=maya),
+            software=Software(maya=maya, houdini=houdini),
         ),
         path=root.parent / "production.toml",
     )
@@ -111,6 +114,69 @@ def test_maya_is_told_which_work_to_open_once_it_is_up() -> None:
     assert command == r'python("import piper_maya; piper_maya.start(\"7701\", \"modeling\")")'
     # Maya's launcher script drops every single quote an argument holds.
     assert "'" not in command
+
+
+def test_piper_becomes_houdini_in_the_foreground_with_its_menu_on_the_path(
+    tmp_path: Path, release: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable = tmp_path / "bin" / "houdini"
+    executable.parent.mkdir()
+    executable.touch(mode=0o755)
+    monkeypatch.setenv("HFS", str(tmp_path))
+    monkeypatch.setenv("PYTHONPATH", "/venv/site-packages")
+    monkeypatch.setenv("QT_PLUGIN_PATH", "/venv/plugins")
+    monkeypatch.setenv(launch.WORK_ENV, "7701 lookdev")
+    monkeypatch.delenv(PRODUCTION_ENV, raising=False)
+    became: list[list[str]] = []
+    handed: dict[str, str] = {}
+
+    def execve(path: Path, argv: list[str], environment: dict[str, str]) -> None:
+        became.append([str(path), *argv])
+        handed.update(environment)
+
+    monkeypatch.setattr(os, "execve", execve)
+
+    launch.houdini(GENERAL_PROFILE)
+
+    assert became == [[str(executable), str(executable), "-foreground"]]
+    assert handed["PYTHONPATH"] == launch.python_path("houdini")
+    assert handed["HOUDINI_PATH"] == f"{release / 'packages' / 'piper-houdini'}{os.pathsep}&"
+    assert "QT_PLUGIN_PATH" not in handed
+    assert launch.WORK_ENV not in handed
+
+
+def test_a_production_is_made_in_the_houdini_it_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("HFS", raising=False)
+    profile = production_at(tmp_path, houdini="21.5")
+
+    with pytest.raises(PiperError) as refusal:
+        launch.houdini_executable(profile)
+
+    refused = str(refusal.value)
+    assert "sandwich needs Houdini 21.5" in refused
+    assert "/opt/hfs21.5" in refused
+    assert "set HFS" in refused
+
+
+def test_houdini_is_told_which_work_to_open_once_it_is_up(release: Path) -> None:
+    variables = launch.houdini_variables(GENERAL_PROFILE, work=(PAN, LOOKDEV))
+
+    assert variables[launch.WORK_ENV] == "7701 lookdev"
+
+
+def test_a_production_adds_houdini_packages_by_making_the_directory(
+    tmp_path: Path, release: Path
+) -> None:
+    profile = production_at(tmp_path)
+    assert launch.houdini_variables(profile)["HOUDINI_PACKAGE_DIR"] is None
+    assert launch.houdini_variables(profile)["PXR_AR_DEFAULT_SEARCH_PATH"] == str(tmp_path)
+
+    tools = tmp_path / "tools" / "houdini"
+    tools.mkdir(parents=True)
+
+    assert launch.houdini_variables(profile)["HOUDINI_PACKAGE_DIR"] == str(tools)
 
 
 def test_a_host_imports_piper_from_its_sources_and_the_packages_its_integration_chose(
@@ -184,3 +250,31 @@ def test_a_production_whose_storage_is_not_mounted_is_refused(tmp_path: Path) ->
 
     with pytest.raises(PiperError, match="not a directory"):
         launch.working_directory(profile)
+
+
+def test_a_preview_is_opened_by_the_production_houdinis_usdview_without_mayas_libraries(
+    tmp_path: Path, release: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    houdini = tmp_path / "hfs" / "bin"
+    houdini.mkdir(parents=True)
+    (houdini / "houdini").touch(mode=0o755)
+    monkeypatch.setenv("HFS", str(houdini.parent))
+    profile = production_at(tmp_path / "production")
+    (tmp_path / "production").mkdir()
+
+    command = launch.usdview_command(profile, tmp_path / "preview" / "frying_pan.usda")
+    handed = launch.compose(
+        {"LD_LIBRARY_PATH": "/usr/autodesk/maya2026/lib", "HOME": "/home/artist"},
+        launch.usdview_variables(profile),
+    )
+
+    assert command == [
+        str(houdini / "hython"),
+        str(houdini / "usdview"),
+        str(tmp_path / "preview" / "frying_pan.usda"),
+    ]
+    assert "LD_LIBRARY_PATH" not in handed
+    assert handed["HOME"] == "/home/artist"
+    assert handed["PXR_AR_DEFAULT_SEARCH_PATH"] == str(tmp_path / "production")
+    assert handed["PYTHONPATH"] == launch.python_path("houdini")
+    assert launch.working_directory(profile) == tmp_path / "production"

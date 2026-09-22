@@ -9,7 +9,9 @@ installed like any product, so nothing here is ever edited in place.
 from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 
-from pxr import Sdf
+# `.usda` is a format of the `usd` plugin. The usd-core wheel cannot load that plugin
+# on demand; importing `Usd` loads it.
+from pxr import Sdf, Usd  # noqa: F401
 
 from piper.errors import PiperError
 from piper.tracker import Asset
@@ -26,16 +28,39 @@ def write_asset_version(
     directory: Path, *, root: PurePosixPath, asset: Asset, pins: Mapping[str, int]
 ) -> Path:
     """Write the entry and payload pinning ``pins`` into ``directory``; return the entry."""
+    references = []
+    for product, version in sorted(pins.items()):
+        spelled = layer_path(root, asset, product, version)
+        references.append((str(spelled), Path(root / spelled)))
+    return _write_entry(directory, root, asset, references)
+
+
+def write_preview(
+    directory: Path, *, root: PurePosixPath, asset: Asset, pins: Mapping[str, int], layer: Path
+) -> Path:
+    """Write the entry a publish of ``layer``, exported into ``directory``, would build; return it.
+
+    ``layer`` takes the place of its product's pin. Nothing is installed.
+    """
+    references = {layer.stem: (f"./{layer.relative_to(directory)}", layer)}
+    for product, version in pins.items():
+        if product != layer.stem:
+            spelled = layer_path(root, asset, product, version)
+            references[product] = (str(spelled), Path(root / spelled))
+    return _write_entry(directory, root, asset, [references[p] for p in sorted(references)])
+
+
+def _write_entry(
+    directory: Path, root: PurePosixPath, asset: Asset, references: list[tuple[str, Path]]
+) -> Path:
+    """Write the entry and its payload, one reference per (spelling, file) in ``references``."""
     pipe_name = asset_directory(root, asset).name
-    references = [
-        layer_path(root, asset, product, version) for product, version in sorted(pins.items())
-    ]
-    stage = _stage_metadata(root, references)
+    stage = _stage_metadata([path for _, path in references])
 
     payload = Sdf.Layer.CreateNew(str(directory / _PAYLOAD))
     pinning = Sdf.CreatePrimInLayer(payload, f"/{pipe_name}")
     pinning.specifier = Sdf.SpecifierDef
-    pinning.referenceList.prependedItems = [Sdf.Reference(str(path)) for path in references]
+    pinning.referenceList.prependedItems = [Sdf.Reference(spelling) for spelling, _ in references]
     payload.defaultPrim = pipe_name
     _set_stage_metadata(payload, stage)
     payload.Save()
@@ -113,10 +138,10 @@ def layer_path(root: PurePosixPath, asset: Asset, product: str, version: int) ->
     return PurePosixPath(candidates[0].relative_to(Path(root)))
 
 
-def _stage_metadata(root: PurePosixPath, references: list[PurePosixPath]) -> dict[str, object]:
-    """``upAxis`` and ``metersPerUnit`` as the first pinned layer that states them does."""
-    for reference in references:
-        layer = Sdf.Layer.OpenAsAnonymous(str(root / reference))
+def _stage_metadata(layers: list[Path]) -> dict[str, object]:
+    """``upAxis`` and ``metersPerUnit`` as the first of ``layers`` that states them does."""
+    for path in layers:
+        layer = Sdf.Layer.OpenAsAnonymous(str(path))
         if layer is None:
             continue
         found = {

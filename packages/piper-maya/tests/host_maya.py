@@ -4,7 +4,8 @@ import os
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
+import textwrap
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
@@ -25,6 +26,24 @@ types = ["Prop"]
 site = "https://example.invalid"
 script = "piper"
 project = 0
+"""
+
+# A look on one slot, as Houdini publishes one.
+_MTL = """
+    #usda 1.0
+    (
+        defaultPrim = "kettle"
+    )
+
+    over "kettle"
+    {
+        over "mtl"
+        {
+            over "steelSG"
+            {
+            }
+        }
+    }
 """
 
 
@@ -229,7 +248,9 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
     from piper.tracker import Asset
     from piper_maya.publish import publish_work, scene_asset
     from piper_maya.work import open_work
+    from piper_studio import compose
     from piper_studio.context import context_named
+    from piper_studio.publish import publish
 
     kettle = Asset(id="303", name="Kettle", type="Prop", folder="kitchen", pipe_name="kettle")
 
@@ -382,16 +403,36 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
     )
     cmds.delete("geo")
 
-    # The menu's handler, with the artist's answers scripted: no dialog can be shown here.
+    # Looks on the slots, so that a geo publish has mtl versions to pin.
+    for number in (1, 2):
+        export = root / "export" / f"mtl_{number}"
+        export.mkdir(parents=True)
+        (export / "mtl.usda").write_text(textwrap.dedent(_MTL).lstrip(), encoding="utf-8")
+        publish(
+            registry,
+            root=production.root,
+            asset=kettle,
+            product="mtl",
+            layer=PurePosixPath(export / "mtl.usda"),
+        )
+
+    # The menu's handler, with the artist's answers scripted: no window can be shown here.
 
     from piper_maya import ui
 
     shown: list[tuple[str, list[str]]] = []
-    answers: list[str] = []
+    asked: list[tuple[list[str], dict[str, tuple[list[int], int]], list[str]]] = []
+    answers: list[tuple[str, dict[str, int]] | None] = []
 
     def answer_dialog(*, message: str, button: list[str], **_: object) -> str:
         shown.append((message, button))
-        return answers.pop(0) if answers else "OK"
+        return "OK"
+
+    def answer_window(
+        lines: list[str], offered: dict[str, tuple[list[int], int]], buttons: list[str]
+    ) -> tuple[str, dict[str, int]] | None:
+        asked.append((lines, offered, buttons))
+        return answers.pop(0)
 
     def versions() -> list[str]:
         return sorted(path.name for path in version.parent.iterdir())
@@ -399,71 +440,85 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
     with (
         mock.patch.object(ui, "tracker_for", lambda _: tracker),
         mock.patch.object(ui, "registry_for", lambda _: registry),
+        mock.patch.object(ui, "publish_window", answer_window),
         mock.patch.object(cmds, "confirmDialog", answer_dialog),
     ):
         # `body` was the default material's before its faces were assigned, and Maya
         # leaves that connection behind. Naming it would promise a slot the export does not write.
         cmds.select("body")
-        answers[:] = ["Cancel"]
+        answers[:] = [None]
         ui.show_publish()
+        lines, offered, buttons = asked[0]
         check(
-            "Publish… says what an unsaved scene would publish, and Cancel publishes nothing",
-            shown[0][1] == ["Save and Publish", "Publish Without Saving", "Cancel"]
-            and "Publish to Kettle, geo?" in shown[0][0]
-            and "Selected: body\n" in shown[0][0]
-            and shown[0][0].endswith("Materials: steelSG, woodSG")
-            and len(shown) == 1
+            "Publish… says what an unsaved scene would publish and what is current, and Cancel "
+            "publishes nothing",
+            lines[0] == "Publish to Kettle, geo?"
+            and "Selected: body" in lines
+            and "Materials: steelSG, woodSG" in lines
+            and lines[-1] == "Current v004 pins geo v002, mtl v002."
+            and buttons == ["Save and Publish", "Publish Without Saving"]
+            and not shown
             and versions() == ["v001", "v002"],
-            shown[0][0].replace("\n", " | "),
+            " | ".join(lines),
+        )
+        check(
+            "offers the other component's versions, starting on current's pin",
+            offered == {"mtl": ([1, 2], 2)},
+            str(offered),
         )
         cmds.select("kettle_grp", "lid", "later_edit")
-        answers[:] = ["Save and Publish"]
+        answers[:] = [("Save and Publish", {"mtl": 2})]
         ui.show_publish()
         published = Usd.Stage.Open(str(version.parent / "v003" / "geo.usd"))
         slots = sorted(p.GetName() for p in published.Traverse() if p.IsA(UsdShade.Material))
         check(
-            "Save and Publish saves the work file, publishes it, and says which version it made",
+            "Save and Publish saves the work file, publishes it, and says what it made and pinned",
             not cmds.file(query=True, modified=True)
             and (version.parent / "v003" / "src" / "kettle.mb").read_bytes() == work.read_bytes()
-            and "Published geo v003 of Kettle" in shown[-1][0],
+            and "Published geo v003 of Kettle" in shown[-1][0]
+            and "asset v005 pins geo v003 and mtl v002, and is current" in shown[-1][0],
             shown[-1][0].replace("\n", " | "),
         )
         check(
             "the materials it named are the slots it published",
-            len(slots) == 3 and shown[-2][0].endswith(f"Materials: {', '.join(slots)}"),
+            len(slots) == 3 and f"Materials: {', '.join(slots)}" in asked[-1][0],
             str(slots),
         )
-        answers[:] = ["Cancel"]
+        answers[:] = [None]
         ui.show_publish()
         check(
             "a saved scene is asked nothing about saving: Publish or Cancel",
-            shown[-1][1] == ["Publish", "Cancel"] and versions()[-1] == "v003",
+            asked[-1][2] == ["Publish"] and versions()[-1] == "v003",
         )
         cmds.setAttr("lid.translateY", 1)
         work.chmod(0o444)
         saved = work.read_bytes()
-        answers[:] = ["Save and Publish"]
+        answers[:] = [("Save and Publish", {"mtl": 2})]
         ui.show_publish()
         check(
             "a save Maya refuses is shown in Maya's words, and publishes nothing",
             "Maya could not save the scene (" in shown[-1][0] and versions()[-1] == "v003",
             shown[-1][0][:90],
         )
-        answers[:] = ["Publish Without Saving"]
+        answers[:] = [("Publish Without Saving", {"mtl": 1})]
         ui.show_publish()
         work.chmod(0o644)
         check(
-            "and Publish Without Saving then publishes, leaving the work file as it was",
+            "Publish Without Saving pins the version chosen, and leaves the work file as it was",
             "Published geo v004 of Kettle" in shown[-1][0]
+            and compose.pins(production.root, kettle, 6) == {"geo": 4, "mtl": 1}
             and work.read_bytes() == saved
             and cmds.file(query=True, modified=True),
+            shown[-1][0].replace("\n", " | "),
         )
         cmds.select(clear=True)
         ui.show_publish()
         check(
             "a refusal is shown to the artist, and nothing is asked",
-            "select the geometry" in shown[-1][0] and shown[-1][1] == ["OK"],
+            "select the geometry" in shown[-1][0] and shown[-1][1] == ["OK"] and len(asked) == 5,
         )
+
+    check_preview_work(production, tracker, check, shown)
 
     cmds.file(str(source), open=True, force=True)
     check(
@@ -485,6 +540,142 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
         "a scene with no stamp is refused",
         "is not host_check work" in refusal(lambda: scene_asset(tracker, production)),
     )
+
+
+def check_preview_work(
+    production: "Production",
+    tracker: "Tracker",
+    check: "Callable[..., None]",
+    shown: list[tuple[str, list[str]]],
+) -> None:
+    """Preview the selection: a publish's export, composed with current, installed nowhere."""
+    import time
+    from unittest import mock
+
+    from maya import cmds, utils
+    from pxr import Ar, Usd, UsdGeom, UsdShade
+
+    from piper.tracker import Asset
+    from piper_maya import ui
+    from piper_maya.publish import preview_work
+    from piper_studio import compose, launch
+    from piper_studio.profile import active
+
+    profile = active()
+    root = Path(str(production.root))
+    kettle = Asset(id="303", name="Kettle", type="Prop", folder="kitchen", pipe_name="kettle")
+    installed = {
+        product: compose.versions(production.root, kettle, product)
+        for product in ("geo", "mtl", "asset")
+    }
+
+    cmds.select("kettle_grp", "lid")
+    preview = root / "preview"
+    preview.mkdir()
+    entry = preview_work(production, kettle, preview)
+    stage = Usd.Stage.Open(str(entry), Ar.DefaultResolverContext([str(root)]), Usd.Stage.LoadAll)
+    body = stage.GetPrimAtPath("/kettle/geo/render/kettle_grp/body")
+    bound = UsdShade.MaterialBindingAPI(stage.GetPrimAtPath(f"{body.GetPath()}/steelSG"))
+    slot = stage.GetPrimAtPath("/kettle/mtl/steelSG")
+    stack = [spec.layer.realPath for spec in slot.GetPrimStack()]
+    check(
+        "Preview… composes the export with the mtl version current pins, installing nothing",
+        stage.GetCompositionErrors() == []
+        and entry == preview / "kettle.usda"
+        and UsdGeom.Imageable(body).ComputePurpose() == UsdGeom.Tokens.render
+        and bound.ComputeBoundMaterial()[0].GetPath() == slot.GetPath()
+        and str(preview / "geo.usd") in stack
+        and any(path.endswith("publish/mtl/v001/mtl.usda") for path in stack)
+        and not any("publish/geo" in path for path in stack)
+        and installed
+        == {
+            product: compose.versions(production.root, kettle, product)
+            for product in ("geo", "mtl", "asset")
+        },
+        " ".join(Path(path).parent.name for path in stack),
+    )
+    del stage
+    ran = subprocess.run(
+        [*launch.usdview_command(profile, entry), "--quitAfterStartup"],
+        env=launch.compose(os.environ, launch.usdview_variables(profile)),
+        cwd=launch.working_directory(profile),
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    check(
+        "Houdini's usdview opens the preview from Maya, and closes without a word",
+        ran.returncode == 0 and not ran.stdout.strip() and not ran.stderr.strip(),
+        (ran.stdout + ran.stderr).strip()[-200:] or f"exit {ran.returncode}",
+    )
+
+    # The menu's handler, with the viewer scripted: it is given an entry that exists, and
+    # outlives it. mayapy never idles, so what is deferred to Maya's main thread runs at once.
+    started: list[tuple[list[str], bool, str | None]] = []
+    status = [0]
+
+    class Viewer:
+        def __init__(
+            self, command: list[str], *, env: dict[str, str], cwd: Path, stderr: int
+        ) -> None:
+            started.append((command, Path(command[-1]).is_file(), env.get("LD_LIBRARY_PATH")))
+            assert cwd == root and stderr == subprocess.PIPE
+            self.returncode = status[0]
+
+        def communicate(self) -> tuple[None, bytes]:
+            return None, b"Fatal Python error: init_fs_encoding" if self.returncode else b""
+
+    def previews() -> int:
+        return len(list(Path(tempfile.gettempdir()).glob("piper_preview_*")))
+
+    def settled(done: "Callable[[], bool]") -> bool:
+        waited = time.monotonic() + 10
+        while not done() and time.monotonic() < waited:
+            time.sleep(0.05)
+        return done()
+
+    before = previews()
+    with (
+        mock.patch.object(ui, "tracker_for", lambda _: tracker),
+        mock.patch.object(subprocess, "Popen", Viewer),
+        mock.patch.object(utils, "executeDeferred", lambda action, *args: action(*args)),
+        mock.patch.object(
+            cmds, "confirmDialog", lambda **kw: shown.append((kw["message"], kw["button"]))
+        ),
+    ):
+        quiet = len(shown)
+        ui.show_preview()
+        command, existed, libraries = started[-1]
+        directory = Path(command[-1]).parent
+        check(
+            "Preview… starts the viewer on an entry that exists, and removes it when it exits",
+            command[:2] == launch.usdview_command(profile, Path(command[-1]))[:2]
+            and Path(command[-1]).name == "kettle.usda"
+            and directory.name.startswith("piper_preview_")
+            and existed
+            and libraries is None
+            and settled(lambda: not directory.exists())
+            and previews() == before
+            and len(shown) == quiet,
+            f"{directory} exists={directory.exists()}",
+        )
+        status[0] = 1
+        ui.show_preview()
+        check(
+            "a viewer that closes with an error is reported, and its directory removed",
+            settled(lambda: len(shown) > quiet)
+            and "usdview closed with status 1" in shown[-1][0]
+            and "init_fs_encoding" in shown[-1][0]
+            and previews() == before,
+            shown[-1][0][:60] if len(shown) > quiet else "nothing shown",
+        )
+        cmds.select(clear=True)
+        ui.show_preview()
+        check(
+            "a refusal is shown, and no viewer starts and nothing is left behind",
+            "select the geometry" in shown[-1][0] and len(started) == 2 and previews() == before,
+        )
 
 
 def run_in_host() -> int:

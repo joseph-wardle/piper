@@ -177,3 +177,34 @@ def test_a_pin_names_a_version_that_is_installed(root: PurePosixPath, tmp_path: 
         compose.pins(root, PAN, 1)
     assert compose.versions(root, PAN, "geo") == [1, 3]
     assert compose.versions(root, PAN, "asset") == []
+
+
+def test_a_preview_composes_the_exported_layer_in_place_of_its_products_pin(
+    root: PurePosixPath, tmp_path: Path
+) -> None:
+    install(root, "geo", 1, GEO)
+    install(root, "mtl", 1, MTL)
+    export = tmp_path / "export"
+    export.mkdir()
+    exported = export / "geo.usd"
+    exported.write_text(textwrap.dedent(GEO).lstrip().replace("body", "spout"), encoding="utf-8")
+
+    entry = compose.write_preview(
+        export, root=root, asset=PAN, pins={"geo": 1, "mtl": 1}, layer=exported
+    )
+
+    stage = Usd.Stage.Open(str(entry), Ar.DefaultResolverContext([str(root)]), Usd.Stage.LoadAll)
+    spout = stage.GetPrimAtPath("/frying_pan/geo/render/spout")
+    surface = UsdShade.Material(stage.GetPrimAtPath("/frying_pan/mtl/ironSG")).ComputeSurfaceSource(
+        "ri"
+    )
+    payload = (export / "payload.usda").read_text(encoding="utf-8")
+    assert stage.GetCompositionErrors() == []
+    assert entry == export / "frying_pan.usda"
+    assert spout and not stage.GetPrimAtPath("/frying_pan/geo/render/body")
+    assert UsdShade.MaterialBindingAPI(spout).ComputeBoundMaterial()[0].GetPath().name == "ironSG"
+    assert surface[0].GetPrim().GetPath() == Sdf.Path("/frying_pan/mtl/ironSG/rman")
+    assert (UsdGeom.GetStageUpAxis(stage), UsdGeom.GetStageMetersPerUnit(stage)) == ("Y", 1.0)
+    assert "@./geo.usd@" in payload
+    assert "@asset/kitchen/frying_pan/publish/mtl/v001/mtl.usda@" in payload
+    assert compose.versions(root, PAN, "asset") == []

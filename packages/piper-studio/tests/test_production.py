@@ -34,12 +34,13 @@ def test_reads_the_production_its_storage_and_its_shotgrid_project(tmp_path: Pat
     assert production.shotgrid.project == 716
 
 
-def test_the_maya_a_production_is_made_in_is_optional(tmp_path: Path) -> None:
+def test_the_releases_a_production_is_made_in_are_optional(tmp_path: Path) -> None:
     assert load_production(write_production(tmp_path, _COMPLETE)).software.maya is None
 
-    named = _COMPLETE + '\n[software]\nmaya = "2026"\n'
+    named = _COMPLETE + '\n[software]\nmaya = "2026"\nhoudini = "21.0"\n'
 
-    assert load_production(write_production(tmp_path, named)).software.maya == "2026"
+    software = load_production(write_production(tmp_path, named)).software
+    assert (software.maya, software.houdini) == ("2026", "21.0")
 
 
 def test_the_environment_names_the_configuration(

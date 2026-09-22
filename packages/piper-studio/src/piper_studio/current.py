@@ -3,7 +3,9 @@
 import secrets
 from pathlib import Path, PurePosixPath
 
-from pxr import Sdf, Tf
+# `.usda` is a format of the `usd` plugin. The usd-core wheel cannot load that plugin
+# on demand; importing `Usd` loads it.
+from pxr import Sdf, Tf, Usd  # noqa: F401
 
 from piper.errors import PiperError
 from piper.tracker import Asset

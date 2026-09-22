@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mainMenu>
+  <menuBar>
+    <subMenu id="piper_menu">
+      <label>Piper</label>
+      <insertBefore>help_menu</insertBefore>
+      <scriptItem id="piper_open_work">
+        <label>Open Work…</label>
+        <scriptCode><![CDATA[
+from piper_houdini import ui
+ui.show_open_work()
+]]></scriptCode>
+      </scriptItem>
+      <scriptItem id="piper_publish">
+        <label>Publish…</label>
+        <scriptCode><![CDATA[
+from piper_houdini import ui
+ui.show_publish()
+]]></scriptCode>
+      </scriptItem>
+    </subMenu>
+  </menuBar>
+</mainMenu>

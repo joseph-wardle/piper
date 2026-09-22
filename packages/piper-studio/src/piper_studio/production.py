@@ -32,6 +32,7 @@ class Software:
     """
 
     maya: str | None = None
+    houdini: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,7 +100,10 @@ def _types(document: Mapping[str, object], path: Path) -> tuple[str, ...]:
 
 def _software(document: Mapping[str, object], path: Path) -> Software:
     table = _optional(document, "software", dict, path) or {}
-    return Software(maya=_optional(table, "maya", str, path, prefix="software."))
+    return Software(
+        maya=_optional(table, "maya", str, path, prefix="software."),
+        houdini=_optional(table, "houdini", str, path, prefix="software."),
+    )
 
 
 def _required(

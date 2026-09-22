@@ -9,19 +9,23 @@ from piper_studio.context import Context
 from piper_studio.profile import Profile
 
 Run = Callable[..., int]
-Launches = list[tuple[Asset, Context]]
+Launches = list[tuple[str, Asset, Context]]
 
 
 @pytest.fixture
 def launches(root: Path, monkeypatch: pytest.MonkeyPatch) -> Launches:
-    """The work Maya was launched on, in a production holding the frying pan's directory."""
+    """Which host was launched on which work, in a production holding the frying pan's directory."""
     (root / "asset" / "kitchen" / "frying_pan").mkdir(parents=True)
     launched: Launches = []
 
     def maya(_profile: Profile, work: tuple[Asset, Context]) -> None:
-        launched.append(work)
+        launched.append(("maya", *work))
+
+    def houdini(_profile: Profile, work: tuple[Asset, Context]) -> None:
+        launched.append(("houdini", *work))
 
     monkeypatch.setattr(launch, "maya", maya)
+    monkeypatch.setattr(launch, "houdini", houdini)
     return launched
 
 
@@ -31,7 +35,18 @@ def test_an_asset_is_opened_by_a_part_of_its_name_only_it_has(
     assert run(tracker, "open", "fry", "modeling") == 0
 
     assert capsys.readouterr().out == "Opening modeling work on 'Frying Pan'\n"
-    assert [(asset.id, context.name) for asset, context in launches] == [("7701", "modeling")]
+    assert [(host, asset.id, context.name) for host, asset, context in launches] == [
+        ("maya", "7701", "modeling")
+    ]
+
+
+def test_lookdev_work_opens_in_houdini(
+    run: Run, tracker: Tracker, launches: Launches, root: Path
+) -> None:
+    assert run(tracker, "open", "fry", "lookdev") == 0
+
+    assert [(host, context.name) for host, _asset, context in launches] == [("houdini", "lookdev")]
+    assert (root / "asset" / "kitchen" / "frying_pan" / "work" / "lookdev").is_dir()
 
 
 def test_a_whole_name_in_any_case_wins_over_longer_names_containing_it(
@@ -43,7 +58,7 @@ def test_a_whole_name_in_any_case_wins_over_longer_names_containing_it(
 
     assert run(tracker, "open", "frying pan", "modeling") == 0
 
-    assert [asset.name for asset, _context in launches] == ["Frying Pan"]
+    assert [asset.name for _host, asset, _context in launches] == ["Frying Pan"]
 
 
 def test_a_part_several_names_have_opens_nothing_and_lists_them(
@@ -63,7 +78,7 @@ def test_an_unknown_context_names_the_contexts_there_are(
     assert run(tracker, "open", "Frying Pan", "rigging") == 1
 
     assert capsys.readouterr().err == (
-        "piper: no asset context is named 'rigging' (contexts: modeling)\n"
+        "piper: no asset context is named 'rigging' (contexts: modeling, lookdev)\n"
     )
     assert launches == []
 

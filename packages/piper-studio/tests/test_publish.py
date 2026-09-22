@@ -19,6 +19,8 @@ from piper_studio.publish import (
     PublishResult,
     UnregisteredVersionError,
     composition,
+    current_line,
+    other_versions,
     publish,
     publish_product,
 )
@@ -676,6 +678,26 @@ def test_an_older_composition_made_current_is_the_base_of_the_next_publish(
     assert dict(result.pins) == {"geo": 1, "mtl": 2}
     assert result.asset_version is not None and result.asset_version.version == 4
     assert current(PurePosixPath(root), PAN) == 4
+
+
+def test_a_dialog_says_what_is_current_and_offers_the_other_components_versions(
+    registry: Registry, root: Path, export: Path
+) -> None:
+    production = PurePosixPath(root)
+    assert current_line(None, {}) == "Nothing is current."
+    assert other_versions(production, PAN, {}, "geo") == {}
+
+    write(export / "geo.usda", GEO)
+    write(export / "mtl.usda", MTL)
+    compose_run(registry, root, export / "geo.usda")
+    compose_run(registry, root, export / "mtl.usda", product="mtl")
+    compose_run(registry, root, export / "geo.usda")
+    make_current(production, PAN, 2)
+    pins = {"geo": 1, "mtl": 1}
+
+    assert current_line(2, pins) == "Current v002 pins geo v001, mtl v001."
+    assert other_versions(production, PAN, pins, "geo") == {"mtl": ([1], 1)}
+    assert other_versions(production, PAN, pins, "mtl") == {"geo": ([1, 2], 1)}
 
 
 def test_a_named_version_replaces_the_current_pin_for_that_publish_only(
