@@ -93,11 +93,7 @@ def slots(layer: Path, asset: Asset) -> dict[str, list[str]]:
 
 
 def copy_scene(directory: Path) -> Path:
-    """A copy of the scene as it is, unsaved changes included, in ``directory``.
-
-    Houdini writes it as a backup, in ``backup/`` beside the work file, and
-    the copy is moved from there; the work file itself is never changed.
-    """
+    """A copy of the scene as it is, unsaved changes included, in ``directory``."""
     scene = Path(hou.hipFile.path())
     try:
         backup = Path(hou.hipFile.saveAsBackup())

@@ -50,11 +50,7 @@ def stamped_asset(
     scene: Path,
     remedy: str,
 ) -> Asset:
-    """The asset the open scene is work on, refusing a scene that is not that work's own file.
-
-    ``carried`` is the scene's stamp, a key it lacks None; ``scene`` is where the
-    host has it; ``remedy`` tells the artist what to do with any other scene.
-    """
+    """The asset the open scene is work on."""
     asset_id = carried[ASSET_ID_KEY]
     # A scene the host has never saved carries no stamp, so this refuses it too.
     if carried[PRODUCTION_KEY] != production.name or not asset_id:
@@ -81,11 +77,7 @@ def restamp_notice(
     asset: Asset,
     context: Context,
 ) -> str | None:
-    """What to tell an artist whose file is now ``asset``'s work in ``context``.
-
-    ``carried`` is the stamp the file had. None for a file that carried none,
-    which is new work and needs no telling.
-    """
+    """What to tell an artist whose file is now ``asset``'s work in ``context``."""
     if not any(carried.values()):
         return None
     # An id means something only to the production whose tracker gave it.

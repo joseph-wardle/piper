@@ -93,7 +93,7 @@ def publish_work(
 
 
 def preview_work(production: Production, asset: Asset, directory: Path) -> Path:
-    """Write into ``directory`` what publishing the selection would compose; return the entry."""
+    """Write into ``directory`` what publishing the selection would compose."""
     root = production.root
     layer = export_selection(directory, asset)
     now = current(root, asset)
@@ -102,10 +102,7 @@ def preview_work(production: Production, asset: Asset, directory: Path) -> Path:
 
 
 def export_selection(directory: Path, asset: Asset) -> Path:
-    """Export the selection into ``directory`` as ``asset``'s geometry layer.
-
-    In metres, the model under ``/geo/render``, and each material an empty slot.
-    """
+    """Export the selection into ``directory`` as ``asset``'s geometry layer."""
     selection()
     # Usable as a prim name: `scene_asset` refused the scene otherwise.
     pipe_name = asset.pipe_name or ""

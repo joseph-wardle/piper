@@ -201,11 +201,7 @@ def _remove_after_viewing(viewer: subprocess.Popen[bytes], directory: Path) -> N
 def publish_window(
     lines: list[str], offered: Mapping[str, tuple[list[int], int]], buttons: list[str]
 ) -> tuple[str, dict[str, int]] | None:
-    """Show ``lines``, a version menu per product ``offered``, and ``buttons``.
-
-    ``offered`` maps a product to its installed versions and the one to start
-    on. Returns the button pressed and the versions chosen, or None for Cancel.
-    """
+    """Show ``lines``, a version menu per product ``offered``, and ``buttons``."""
     menus: dict[str, str] = {}
     chosen: dict[str, int] = {}
 
