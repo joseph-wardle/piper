@@ -17,6 +17,7 @@ from piper_studio.context import context_named
 from piper_studio.create import PartialCreateAssetError, UnknownFolderError, create_asset
 from piper_studio.production import Production
 from piper_studio.registry import registry_for
+from piper_studio.textures import convert, renderman_install
 from piper_studio.tracker import tracker_for
 from piper_studio.work import prepare_work
 
@@ -200,6 +201,21 @@ def publish_command(
         render.publish_result_as_json(result)
     else:
         render.publish_result_as_text(result)
+
+
+@app.command(name="convert")
+def convert_command(directory: Path, /) -> None:
+    """Write a RenderMan texture beside every PNG Painter exported into a directory.
+
+    Needs no production: a class project's textures convert the same way.
+
+    Parameters
+    ----------
+    directory
+        Where Painter exported, with each PNG named <slot>_<map>.<udim>.png.
+    """
+    textures = convert(directory, renderman=renderman_install())
+    print(f"Converted {len(textures)} textures in {directory}")
 
 
 @app.command(name="current")
