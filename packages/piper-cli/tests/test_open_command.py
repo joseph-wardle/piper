@@ -24,8 +24,12 @@ def launches(root: Path, monkeypatch: pytest.MonkeyPatch) -> Launches:
     def houdini(_profile: Profile, work: tuple[Asset, Context]) -> None:
         launched.append(("houdini", *work))
 
+    def painter(_profile: Profile, work: tuple[Asset, Context]) -> None:
+        launched.append(("painter", *work))
+
     monkeypatch.setattr(launch, "maya", maya)
     monkeypatch.setattr(launch, "houdini", houdini)
+    monkeypatch.setattr(launch, "painter", painter)
     return launched
 
 
@@ -83,15 +87,15 @@ def test_an_unknown_context_names_the_contexts_there_are(
     assert launches == []
 
 
-def test_texturing_work_is_refused_until_painter_can_be_launched(
-    run: Run, tracker: Tracker, launches: Launches, capsys: pytest.CaptureFixture[str]
+def test_texturing_work_opens_in_painter(
+    run: Run, tracker: Tracker, launches: Launches, root: Path
 ) -> None:
-    assert run(tracker, "open", "Frying Pan", "texturing") == 1
+    assert run(tracker, "open", "fry", "texturing") == 0
 
-    assert capsys.readouterr().err == (
-        "piper: texturing work is done in painter, which piper cannot launch yet\n"
-    )
-    assert launches == []
+    assert [(host, context.name) for host, _asset, context in launches] == [
+        ("painter", "texturing")
+    ]
+    assert (root / "asset" / "kitchen" / "frying_pan" / "work" / "texturing").is_dir()
 
 
 def test_an_asset_create_never_finished_is_refused_before_maya_starts(

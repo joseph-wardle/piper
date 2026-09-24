@@ -2,7 +2,7 @@
 
 import os
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath
 
 from piper.errors import PiperError
 from piper.tracker import Asset, Tracker
@@ -19,7 +19,7 @@ class CreateAssetResult:
     """
 
     asset: Asset
-    directory: PurePosixPath
+    directory: PurePath
     asset_created: bool
     pipe_name_given: bool
     directory_created: bool
@@ -40,7 +40,7 @@ class PartialCreateAssetError(PiperError):
 def create_asset(
     tracker: Tracker,
     *,
-    root: PurePosixPath,
+    root: PurePath,
     types: tuple[str, ...],
     name: str,
     type: str,

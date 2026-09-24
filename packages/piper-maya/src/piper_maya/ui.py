@@ -122,7 +122,7 @@ def show_publish() -> None:
     from piper_studio.publish import composition_line, other_versions, published_line
 
     production, tracker = _production_and_tracker(profile.active())
-    root = production.root
+    root = production.local_root
     asset = scene_asset(tracker, production)
     now, pins = compose.current_pins(root, asset)
     lines = [

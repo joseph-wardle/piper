@@ -9,7 +9,7 @@ Right now it is a sandbox for me to test workflows for my capstone film
 production. `piper find` reads assets and shots from the real tracker,
 `piper create asset` creates an asset there and its directory in storage,
 `piper publish` installs an immutable version of an exported USD product, and
-`piper open` starts Maya or Houdini on an asset's work.
+`piper open` starts Maya, Houdini, or Substance Painter on an asset's work.
 
 ## Layout
 
@@ -21,6 +21,7 @@ production. `piper find` reads assets and shots from the real tracker,
 | `packages/piper-cli` | `piper-cli` | `piper_cli` | The `piper` command |
 | `packages/piper-maya` | `piper-maya` | `piper_maya` | Piper inside Maya: its menu, and opening, previewing, and publishing work |
 | `packages/piper-houdini` | `piper-houdini` | `piper_houdini` | Piper inside Houdini: its menu, its material node, and opening and publishing work |
+| `packages/piper-painter` | `piper-painter` | `piper_painter` | Piper inside Substance Painter: its menu items, and opening and publishing work |
 
 `piper-core` is imported in-process by DCC integrations, so it targets the
 2025 VFX Reference Platform python version `3.11.x`. This project will update 
@@ -34,10 +35,10 @@ Requires [uv](https://docs.astral.sh/uv/) and [just](https://just.systems/).
 just sync
 ```
 
-This builds three environments from one lock: the project's own, and one per
-host, `packages/piper-maya/.venv` and `packages/piper-houdini/.venv`, each holding
-only what its package names and being the one directory of third-party packages
-that host imports from.
+This builds four environments from one lock: the project's own, and one per
+host, `packages/piper-maya/.venv`, `packages/piper-houdini/.venv`, and
+`packages/piper-painter/.venv`, each holding only what its package names and
+being the one directory of third-party packages that host imports from.
 
 ## Use
 
@@ -63,6 +64,7 @@ A production is one TOML file:
 ```toml
 name = "sandwich"
 root = "/groups/sandwich/05_production"
+windows_root = "G:/sandwich/05_production"
 types = ["Character", "Environment", "Set Piece", "Vehicle"]
 
 [shotgrid]
@@ -75,7 +77,9 @@ maya = "2026"
 houdini = "21.0"
 ```
 
-`root` is where the production is stored. `types` are the asset types artists
+`root` is where the production is stored, as every path Piper records spells it.
+`windows_root` is the same directory as a Windows machine reaches it, and is
+needed only there: Painter runs on Windows. `types` are the asset types artists
 may create, chosen from those ShotGrid offers. `[software]` names the release
 of each application the production is made in, never where it is installed:
 where a release lives differs by machine, and one configuration is read from
@@ -111,7 +115,8 @@ registers it in ShotGrid as a PublishedFile. The layer is named for its product.
 Its dependencies must be inside the layer's directory, or be pins into installed
 versions spelled from the production root, such as
 `asset/kitchen/frying_pan/publish/geo/v001/geo.usd`. Publishing again installs
-another version; nothing is replaced.
+another version; nothing is replaced. `--source` keeps the work file the export
+came from in the version's `src/`, as the hosts' Publish… do for themselves.
 
 It then builds the asset version, `publish/asset/v003/frying_pan.usda`, which
 pins this component beside the versions the current asset version pins, and
@@ -160,6 +165,7 @@ copy instead: `project = 782` and `root = "/groups/sandwich/04_temp"`.
 piper open "Frying Pan" modeling
 piper open fry modeling            # a part of the name only one asset has
 piper open fry lookdev             # in Houdini
+piper open fry texturing           # in Painter, on Windows
 ```
 
 `open` becomes the context's host on the asset's one work file: for modeling,
@@ -207,9 +213,23 @@ pinned was given, and offers the other components' versions to pin, then publish
 it as the next `mtl` version. A layer that sublayers the asset, which a deleted Layer Break does,
 authors outside `mtl`, or names a material for no slot is refused.
 
+Texturing is Painter's, on Windows. **Piper: Open Work…** in its File menu opens
+the asset's one project, `work/texturing/frying_pan.spp`, and makes it when there
+is none, from the geo the current asset version pins, with UDIM tiles and OpenGL
+normals. The project is stamped with its production, asset, context, and the geo
+it was made from; when current later pins a newer geo, opening it says so, and
+the artist reloads the mesh in Painter, strokes kept. **Piper: Publish…** saves
+the project, exports every map of every texture set through Piper's own preset,
+the PNGs at the project's size and 1K JPEG previews, and runs
+`piper publish … tex` on the export with the project as its source. Painter loads
+no USD of its own, so the command line does the installing, converting, and
+deriving, and its own sentences are what the artist reads. A project never saved
+is no asset's work, and is refused.
+
 ```
 piper launch maya
 piper launch houdini
+piper launch painter
 ```
 
 Maya is the release the production names, found at `/usr/autodesk/maya<release>`;
@@ -228,6 +248,13 @@ It starts the same way, in the foreground, with `packages/piper-houdini` on
 `HOUDINI_PATH` for Piper's menu and startup hook, and the production's Houdini
 packages loaded from `<root>/tools/houdini`, which Piper puts on
 `HOUDINI_PACKAGE_DIR` and never reads itself.
+
+Painter is found at Adobe's own place, `C:/Program Files/Adobe/Adobe Substance 3D
+Painter`, or wherever `PIPER_PAINTER` points. Piper runs it with
+`packages/piper-painter` as its plugin folder, whose `startup` module adds the menu
+items, hands it the interpreter this command runs in as `PIPER_PYTHON`, which the
+plugin runs `piper` with, and waits for it: Windows cannot replace one process
+with another.
 
 ## Checks
 

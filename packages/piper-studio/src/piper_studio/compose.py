@@ -2,7 +2,7 @@
 
 import secrets
 from collections.abc import Mapping
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 
 # Unused, but importing Usd loads the plugin that reads .usda, which usd-core cannot load on demand.
 from pxr import Sdf, Tf, Usd  # noqa: F401
@@ -10,7 +10,7 @@ from pxr import Sdf, Tf, Usd  # noqa: F401
 from piper.errors import PiperError
 from piper.tracker import Asset
 from piper_studio import layout
-from piper_studio.storage import asset_directory
+from piper_studio.storage import asset_directory, layer_file
 
 ASSET = "asset"
 GEOMETRY = "geo"
@@ -20,7 +20,7 @@ _STAGE_METADATA = ("upAxis", "metersPerUnit")
 
 
 def write_asset_version(
-    directory: Path, *, root: PurePosixPath, asset: Asset, pins: Mapping[str, int]
+    directory: Path, *, root: PurePath, asset: Asset, pins: Mapping[str, int]
 ) -> Path:
     """Write the entry and payload pinning ``pins`` into ``directory``."""
     references = []
@@ -31,7 +31,7 @@ def write_asset_version(
 
 
 def write_preview(
-    directory: Path, *, root: PurePosixPath, asset: Asset, pins: Mapping[str, int], layer: Path
+    directory: Path, *, root: PurePath, asset: Asset, pins: Mapping[str, int], layer: Path
 ) -> Path:
     """Write the entry a publish of ``layer``, exported into ``directory``, would build."""
     references = {layer.stem: (f"./{layer.relative_to(directory)}", layer)}
@@ -43,7 +43,7 @@ def write_preview(
 
 
 def _write_entry(
-    directory: Path, root: PurePosixPath, asset: Asset, references: list[tuple[str, Path]]
+    directory: Path, root: PurePath, asset: Asset, references: list[tuple[str, Path]]
 ) -> Path:
     pipe_name = asset_directory(root, asset).name
     stage = _stage_metadata([path for _, path in references])
@@ -73,7 +73,7 @@ def _write_entry(
     return Path(entry.realPath)
 
 
-def pins(root: PurePosixPath, asset: Asset, version: int) -> dict[str, int]:
+def pins(root: PurePath, asset: Asset, version: int) -> dict[str, int]:
     """Which version of each component an installed asset version pins."""
     payload = entry_path(root, asset, version).with_name(_PAYLOAD)
     layer = Sdf.Layer.OpenAsAnonymous(str(payload)) if payload.is_file() else None
@@ -91,36 +91,31 @@ def pins(root: PurePosixPath, asset: Asset, version: int) -> dict[str, int]:
     return pinned
 
 
-def versions(root: PurePosixPath, asset: Asset, product: str) -> list[int]:
+def versions(root: PurePath, asset: Asset, product: str) -> list[int]:
     """The installed version numbers of a product, lowest first."""
-    directory = Path(layout.product_root(PurePosixPath(asset_directory(root, asset)), product))
+    directory = Path(layout.product_root(PurePath(asset_directory(root, asset)), product))
     if not directory.is_dir():
         return []
     numbers = (layout.version_number(path.name) for path in directory.iterdir())
     return sorted(number for number in numbers if number is not None)
 
 
-def entry_path(root: PurePosixPath, asset: Asset, version: int) -> Path:
+def entry_path(root: PurePath, asset: Asset, version: int) -> Path:
     """Where the entry of an asset version is, whether or not it is installed."""
     directory = asset_directory(root, asset)
-    product = layout.product_root(PurePosixPath(directory), ASSET)
+    product = layout.product_root(PurePath(directory), ASSET)
     return Path(product, layout.version_name(version), f"{directory.name}.usda")
 
 
-def layer_path(root: PurePosixPath, asset: Asset, product: str, version: int) -> PurePosixPath:
+def layer_path(root: PurePath, asset: Asset, product: str, version: int) -> PurePosixPath:
     """An installed component version's root layer, named for its product, spelled from the root."""
-    directory = Path(layout.product_root(PurePosixPath(asset_directory(root, asset)), product))
-    candidates = [
-        path
-        for path in (directory / layout.version_name(version)).glob(f"{product}.*")
-        if path.suffix in layout.LAYER_SUFFIXES
-    ]
-    if not candidates:
+    layer = layer_file(root, asset, product, version)
+    if layer is None:
         raise _no_version(root, asset, product, version)
-    return PurePosixPath(candidates[0].relative_to(Path(root)))
+    return PurePosixPath(layer.relative_to(root).as_posix())
 
 
-def slots(root: PurePosixPath, asset: Asset, pins: Mapping[str, int]) -> list[str]:
+def slots(root: PurePath, asset: Asset, pins: Mapping[str, int]) -> list[str]:
     """The material slots of the geo version ``pins`` names, in the order the geo declares them."""
     if GEOMETRY not in pins:
         return []
@@ -131,7 +126,7 @@ def slots(root: PurePosixPath, asset: Asset, pins: Mapping[str, int]) -> list[st
     return [spec.name for spec in materials.nameChildren] if materials else []
 
 
-def current(root: PurePosixPath, asset: Asset) -> int | None:
+def current(root: PurePath, asset: Asset) -> int | None:
     """The asset version consumers get by default, or None when none is current."""
     path = current_path(root, asset)
     if not path.is_file():
@@ -147,7 +142,7 @@ def current(root: PurePosixPath, asset: Asset) -> int | None:
     return number
 
 
-def current_pins(root: PurePosixPath, asset: Asset) -> tuple[int | None, dict[str, int]]:
+def current_pins(root: PurePath, asset: Asset) -> tuple[int | None, dict[str, int]]:
     """The current asset version and what it pins; None and nothing when none is current."""
     version = current(root, asset)
     return version, pins(root, asset, version) if version is not None else {}
@@ -161,7 +156,7 @@ def current_line(version: int | None, pinned: Mapping[str, int]) -> str:
     return f"Current is {ASSET} {layout.version_name(version)}, pinning {listed}."
 
 
-def make_current(root: PurePosixPath, asset: Asset, version: int) -> None:
+def make_current(root: PurePath, asset: Asset, version: int) -> None:
     """Make an installed asset version what consumers get by default."""
     entry = entry_path(root, asset, version)
     if not entry.is_file():
@@ -184,16 +179,16 @@ def make_current(root: PurePosixPath, asset: Asset, version: int) -> None:
         raise PiperError(f"could not replace {path} with {temporary} ({exc.strerror})") from exc
 
 
-def current_path(root: PurePosixPath, asset: Asset) -> Path:
+def current_path(root: PurePath, asset: Asset) -> Path:
     directory = asset_directory(root, asset)
-    return Path(layout.product_root(PurePosixPath(directory), ASSET), f"{directory.name}.usda")
+    return Path(layout.product_root(PurePath(directory), ASSET), f"{directory.name}.usda")
 
 
 def usd_error(exc: Tf.ErrorException) -> str:
     return "; ".join(error.commentary.strip() for error in exc.args)
 
 
-def _no_version(root: PurePosixPath, asset: Asset, product: str, version: int) -> PiperError:
+def _no_version(root: PurePath, asset: Asset, product: str, version: int) -> PiperError:
     installed = ", ".join(layout.version_name(n) for n in versions(root, asset, product))
     return PiperError(
         f"{asset.name} has no {product} {layout.version_name(version)} "

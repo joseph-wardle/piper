@@ -8,6 +8,7 @@ members = [
     "piper-core",
     "piper-houdini",
     "piper-maya",
+    "piper-painter",
     "piper-shotgrid",
     "piper-studio",
 ]
@@ -145,6 +146,21 @@ requires-dist = [
 name = "piper-maya"
 version = "0.1.0"
 source = { editable = "packages/piper-maya" }
+dependencies = [
+    { name = "piper-core" },
+    { name = "piper-studio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "piper-core", editable = "packages/piper-core" },
+    { name = "piper-studio", editable = "packages/piper-studio" },
+]
+
+[[package]]
+name = "piper-painter"
+version = "0.1.0"
+source = { editable = "packages/piper-painter" }
 dependencies = [
     { name = "piper-core" },
     { name = "piper-studio" },

@@ -1,5 +1,8 @@
 import os
+import subprocess
+import sys
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 import pytest
 
@@ -17,6 +20,7 @@ GENERAL_PROFILE = Profile(name=GENERAL, production=None, path=None)
 PAN = Asset(id="7701", name="Frying Pan", type="Prop", folder="kitchen", pipe_name="frying_pan")
 MODELING = Context(name="modeling", subject="asset", host="maya", extension="mb")
 LOOKDEV = Context(name="lookdev", subject="asset", host="houdini", extension="hipnc")
+TEXTURING = Context(name="texturing", subject="asset", host="painter", extension="spp")
 
 
 @pytest.fixture
@@ -25,7 +29,7 @@ def release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     release = tmp_path / "release"
     packages = release / "packages"
     (packages / "piper-core" / "src" / "piper").mkdir(parents=True)
-    for host in ("maya", "houdini"):
+    for host in ("maya", "houdini", "painter"):
         environment = packages / f"piper-{host}" / ".venv" / "lib" / "python3.11" / "site-packages"
         environment.mkdir(parents=True)
     installed = packages / "piper-studio" / "src" / "piper_studio" / "__init__.py"
@@ -144,6 +148,52 @@ def test_piper_becomes_houdini_in_the_foreground_with_its_menu_on_the_path(
     assert "QT_PLUGIN_PATH" not in handed
     assert launch.OPEN_ENV == "PIPER_OPEN" and handed[launch.OPEN_ENV] == "7701 lookdev"
     assert launch.houdini_variables(GENERAL_PROFILE)[launch.OPEN_ENV] is None
+
+
+def test_piper_runs_painter_with_its_plugin_and_interpreter_and_waits_for_it(
+    tmp_path: Path, release: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable = tmp_path / "Adobe Substance 3D Painter.exe"
+    executable.touch(mode=0o755)
+    monkeypatch.setenv(launch.PAINTER_ENV, str(executable))
+    monkeypatch.setenv("PYTHONPATH", "/venv/site-packages")
+    monkeypatch.setenv("QT_PLUGIN_PATH", "/venv/plugins")
+    monkeypatch.delenv(PRODUCTION_ENV, raising=False)
+    ran: list[dict[str, Any]] = []
+
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        ran.append({"argv": argv, **kwargs})
+        return subprocess.CompletedProcess(argv, 3)
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+    with pytest.raises(SystemExit) as left:
+        launch.painter(GENERAL_PROFILE, work=(PAN, TEXTURING))
+
+    assert left.value.code == 3
+    [call] = ran
+    handed = call["env"]
+    assert call["argv"] == [str(executable)]
+    assert handed["PYTHONPATH"] == launch.python_path("painter")
+    assert handed["SUBSTANCE_PAINTER_PLUGINS_PATH"] == str(release / "packages" / "piper-painter")
+    assert handed[launch.PYTHON_ENV] == sys.executable
+    assert handed[launch.OPEN_ENV] == "7701 texturing"
+    assert "QT_PLUGIN_PATH" not in handed
+    assert launch.painter_variables(GENERAL_PROFILE)[launch.OPEN_ENV] is None
+
+
+def test_a_painter_this_machine_does_not_have_is_reported_with_the_variable_to_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(launch.PAINTER_ENV, raising=False)
+
+    with pytest.raises(PiperError) as refusal:
+        launch.painter_executable(GENERAL_PROFILE)
+
+    refused = str(refusal.value)
+    assert "general needs Substance Painter" in refused
+    assert "C:/Program Files/Adobe/Adobe Substance 3D Painter" in refused
+    assert f"set {launch.PAINTER_ENV}" in refused
 
 
 def test_a_production_is_made_in_the_houdini_it_names(

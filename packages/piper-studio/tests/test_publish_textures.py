@@ -138,7 +138,7 @@ def publish_layer(registry: Registry, root: Path, layer: Path) -> None:
         root=PurePosixPath(root),
         asset=PAN,
         product=layer.stem,
-        layer=PurePosixPath(layer),
+        layer=layer,
     )
 
 
@@ -147,7 +147,7 @@ def run(registry: Registry, root: Path, renderman: Path, exported: Path) -> Publ
         registry,
         root=PurePosixPath(root),
         asset=PAN,
-        export=PurePosixPath(exported),
+        export=exported,
         renderman=renderman,
     )
 
@@ -202,7 +202,8 @@ def test_a_first_publish_installs_the_export_freshly_converted_and_names_lookdev
     assert result.warnings == (
         "no material uses textures yet; `piper open 'Frying Pan' lookdev` builds one",
     )
-    assert registrations == [(PAN, "tex", 1, PurePosixPath(installed))]
+    spelled = PurePosixPath("asset/kitchen/frying_pan/publish/tex/v001")
+    assert registrations == [(PAN, "tex", 1, spelled)]
     assert current(PurePosixPath(root), PAN) is None
 
 

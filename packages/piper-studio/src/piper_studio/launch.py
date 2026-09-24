@@ -2,6 +2,7 @@
 
 import os
 import re
+import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -17,7 +18,10 @@ from piper_studio.profile import Profile
 MAYA_VERSION = "2026"
 MAYA_USD_VERSION = "0.25.5"
 HOUDINI_VERSION = "21.0"
+PAINTER_ENV = "PIPER_PAINTER"
+PYTHON_ENV = "PIPER_PYTHON"
 OPEN_ENV = "PIPER_OPEN"
+_PAINTER = "C:/Program Files/Adobe/Adobe Substance 3D Painter/Adobe Substance 3D Painter.exe"
 
 
 def maya(profile: Profile, work: tuple[Asset, Context] | None = None) -> NoReturn:
@@ -131,6 +135,52 @@ def houdini_variables(
     }
 
 
+def painter(profile: Profile, work: tuple[Asset, Context] | None = None) -> NoReturn:
+    """Run Painter, working in ``profile``, with Piper's plugin loaded, and exit as it exits.
+
+    Painter runs on Windows, which has no way to replace this process with
+    another, so Piper waits for it instead.
+    """
+    ran = subprocess.run(
+        [str(painter_executable(profile))],
+        env=environment(os.environ, painter_variables(profile, work)),
+        cwd=working_directory(profile),
+        check=False,
+    )
+    sys.exit(ran.returncode)
+
+
+def painter_executable(profile: Profile) -> Path:
+    """Painter, where this machine keeps it: Adobe's own place, or where ``PIPER_PAINTER`` says."""
+    located = os.environ.get(PAINTER_ENV)
+    executable = Path(located) if located else Path(_PAINTER)
+    if not os.access(executable, os.X_OK):
+        hint = (
+            f"point {PAINTER_ENV} at Painter's executable instead"
+            if located
+            else f"set {PAINTER_ENV} to its executable if Painter lives elsewhere on this machine"
+        )
+        raise PiperError(
+            f"{profile.name} needs Substance Painter, which is not installed at {executable}; "
+            f"{hint}"
+        )
+    return executable
+
+
+def painter_variables(
+    profile: Profile, work: tuple[Asset, Context] | None = None
+) -> dict[str, str | None]:
+    """Every variable Painter's environment must set or unset. ``None`` unsets."""
+    return {
+        "PYTHONPATH": python_path("painter"),
+        "SUBSTANCE_PAINTER_PLUGINS_PATH": str(release_root() / "packages" / "piper-painter"),
+        "QT_PLUGIN_PATH": None,
+        PRODUCTION_ENV: str(profile.path) if profile.path is not None else None,
+        PYTHON_ENV: sys.executable,
+        OPEN_ENV: f"{work[0].id} {work[1].name}" if work is not None else None,
+    }
+
+
 def usdview_command(profile: Profile, layer: Path) -> list[str]:
     """usdview on ``layer``, from the production's Houdini, whose render delegates it carries."""
     binaries = houdini_executable(profile).parent
@@ -154,7 +204,7 @@ def working_directory(profile: Profile) -> Path | None:
 
 def _root(profile: Profile) -> Path | None:
     production = profile.production
-    return Path(str(production.root)) if production is not None else None
+    return Path(production.local_root) if production is not None else None
 
 
 def environment(

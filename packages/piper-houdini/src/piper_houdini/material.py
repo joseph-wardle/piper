@@ -1,7 +1,7 @@
 """The Piper Material node: a material per texture set, reading the textures in one directory."""
 
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 
 import hou
 from pxr import Ar
@@ -115,15 +115,15 @@ def instances() -> tuple[hou.Node, ...]:
     return node_type.instances() if node_type is not None else ()
 
 
-def textures_path(root: PurePosixPath, asset: Asset, version: int) -> PurePosixPath:
+def textures_path(root: PurePath, asset: Asset, version: int) -> PurePosixPath:
     """An installed tex version's directory, spelled from the root."""
-    product = layout.product_root(PurePosixPath(asset_directory(root, asset)), textures.PRODUCT)
-    return (product / layout.version_name(version)).relative_to(root)
+    product = layout.product_root(PurePath(asset_directory(root, asset)), textures.PRODUCT)
+    return PurePosixPath((product / layout.version_name(version)).relative_to(root).as_posix())
 
 
-def scene_textures(root: PurePosixPath, asset: Asset) -> list[tuple[str, int]]:
+def scene_textures(root: PurePath, asset: Asset) -> list[tuple[str, int]]:
     """Each tex version of ``asset`` a Piper Material node reads, and the parm reading it."""
-    directory = layout.product_root(PurePosixPath(asset_directory(root, asset)), textures.PRODUCT)
+    directory = layout.product_root(PurePath(asset_directory(root, asset)), textures.PRODUCT)
     read = []
     for node in instances():
         parm = node.parm("textures")

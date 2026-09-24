@@ -1,6 +1,6 @@
 """Opening an asset's work in Houdini: its file, its starter network, and the stamp saying whose."""
 
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 
 import hou
 
@@ -23,7 +23,7 @@ def open_work(
     tracker: Tracker, production: Production, asset: Asset, context: Context
 ) -> Path | None:
     """Open ``asset``'s work in ``context``, starting it on the current asset version when new."""
-    file = prepare_work(root=production.root, asset=asset, context=context)
+    file = prepare_work(root=production.local_root, asset=asset, context=context)
     warned = None
     try:
         if file.is_file():
@@ -33,7 +33,7 @@ def open_work(
                 # Raised once the file is open.
                 warned = str(warning).strip()
         else:
-            pinned = compose.current(production.root, asset)
+            pinned = compose.current(production.local_root, asset)
             if pinned is None:
                 raise PiperError(
                     f"nothing is current for {asset.name}, so there is no asset to look at "
@@ -41,7 +41,7 @@ def open_work(
                 )
             hou.hipFile.clear()
             hou.hipFile.setName(str(file))
-            build_starter(production.root, asset, pinned)
+            build_starter(production.local_root, asset, pinned)
     except hou.OperationInterrupted:
         # The artist kept the scene they had, at Houdini's own prompt to save it.
         return None
@@ -69,10 +69,10 @@ def open_work(
     return file
 
 
-def build_starter(root: PurePosixPath, asset: Asset, version: int) -> None:
+def build_starter(root: PurePath, asset: Asset, version: int) -> None:
     """The network lookdev starts from, with a material per texture set of the newest tex."""
     pipe_name = asset_directory(root, asset).name
-    entry = PurePosixPath(compose.entry_path(root, asset, version)).relative_to(root)
+    entry = PurePosixPath(compose.entry_path(root, asset, version).relative_to(root).as_posix())
     installed = compose.versions(root, asset, textures.PRODUCT)
     stage = hou.node(STAGE)
     loaded = stage.createNode("sublayer", compose.ASSET)

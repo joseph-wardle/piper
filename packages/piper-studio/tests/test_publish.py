@@ -105,8 +105,8 @@ def run(
         root=PurePosixPath(root),
         asset=asset,
         product=product,
-        layer=PurePosixPath(layer),
-        source=PurePosixPath(source) if source else None,
+        layer=layer,
+        source=source,
     )
 
 
@@ -152,11 +152,13 @@ def test_installs_the_layer_and_what_it_depends_on_as_the_first_version(
     result = run(registry, root, export / "geo.usda")
 
     version = products(root) / "v001"
-    assert (result.version, result.path) == (1, PurePosixPath(version / "geo.usda"))
+    assert (result.version, result.path) == (1, version / "geo.usda")
     installed = {str(path.relative_to(version)) for path in version.rglob("*") if path.is_file()}
     assert installed == {"geo.usda", "looks/wood.usda", "tex/wood.1001.png", "tex/wood.1002.png"}
     assert not any(path.is_symlink() for path in version.rglob("*"))
-    assert registrations == [(PAN, "geo", 1, result.path)]
+    # Registered as every recorded path is spelled: from the root.
+    spelled = PurePosixPath("asset/kitchen/frying_pan/publish/geo/v001/geo.usda")
+    assert registrations == [(PAN, "geo", 1, spelled)]
     assert result.record_id is not None
     assert [path.name for path in products(root).iterdir()] == ["v001"]
 
@@ -608,7 +610,7 @@ def publish_run(
         root=PurePosixPath(root),
         asset=PAN,
         product=product,
-        layer=PurePosixPath(layer),
+        layer=layer,
         with_versions=with_versions or {},
     )
 

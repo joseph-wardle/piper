@@ -3,7 +3,7 @@
 import functools
 import tempfile
 from collections.abc import Callable, Mapping
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath
 from typing import ParamSpec
 
 import hou
@@ -46,7 +46,7 @@ def open_launched_work(asset_id: str, context_name: str) -> None:
         raise PiperError(f"{production.name} has no asset with the id {asset_id}")
     context = context_named(context_name, subject="asset")
     if open_work(tracker, production, asset, context) is not None:
-        _warn_stale(production.root, asset)
+        _warn_stale(production.local_root, asset)
 
 
 @refusals_shown
@@ -66,14 +66,14 @@ def show_open_work() -> None:
         height=440,
     )
     if chosen and open_work(tracker, production, found[chosen[0]], context) is not None:
-        _warn_stale(production.root, found[chosen[0]])
+        _warn_stale(production.local_root, found[chosen[0]])
 
 
 @refusals_shown
 def show_use_textures() -> None:
     """Point the scene's Piper Material at a tex version the artist picks."""
     production, tracker = _production_and_tracker()
-    root = production.root
+    root = production.local_root
     asset = scene_asset(tracker, production)
     generator = _generator()
     versions = compose.versions(root, asset, textures.PRODUCT)
@@ -115,7 +115,7 @@ def add_materials(generator: hou.Node) -> None:
 def show_publish() -> None:
     """Show what the scene would publish, and publish it when the artist agrees."""
     production, tracker = _production_and_tracker()
-    root = production.root
+    root = production.local_root
     asset = scene_asset(tracker, production)
     loaded, parm = scene_pin(root, asset)
     now, pins = compose.current_pins(root, asset)
@@ -207,7 +207,7 @@ def publish_window(
     return pressed[0], chosen
 
 
-def _warn_stale(root: PurePosixPath, asset: Asset) -> None:
+def _warn_stale(root: PurePath, asset: Asset) -> None:
     """Say what the open scene loads and reads when newer versions exist."""
     try:
         loaded, parm = scene_pin(root, asset)

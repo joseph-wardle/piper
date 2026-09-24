@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 from types import MappingProxyType
 
 from pxr import Ar, Sdf, Tf, Usd, UsdUtils
@@ -30,7 +30,7 @@ class ProductVersion:
     asset: Asset
     product: str
     version: int
-    path: PurePosixPath
+    path: Path
     record_id: str | None
 
 
@@ -94,11 +94,11 @@ class UseTexturesResult:
 def publish(
     registry: Registry,
     *,
-    root: PurePosixPath,
+    root: PurePath,
     asset: Asset,
     product: str,
-    layer: PurePosixPath,
-    source: PurePosixPath | None = None,
+    layer: Path,
+    source: Path | None = None,
     with_versions: Mapping[str, int] = _NO_VERSIONS,
 ) -> PublishResult:
     """Publish a component, build the asset version pinning it, and make that current."""
@@ -107,7 +107,7 @@ def publish(
             f"cannot publish {compose.ASSET}: an asset version is built by publishing a "
             "component, such as geo or mtl"
         )
-    if Path(layer).stem != product:
+    if layer.stem != product:
         raise PiperError(
             f"cannot publish {layer} as {product}: a component's root layer is named for its "
             f"product, {product}.usd, {product}.usda, or {product}.usdc"
@@ -138,7 +138,7 @@ def publish(
         try:
             entry = compose.write_asset_version(Path(directory), root=root, asset=asset, pins=pins)
             asset_version = publish_product(
-                registry, root=root, asset=asset, product=compose.ASSET, layer=PurePosixPath(entry)
+                registry, root=root, asset=asset, product=compose.ASSET, layer=entry
             )
         except UnregisteredVersionError as exc:
             raise PartialPublishError(
@@ -188,7 +188,7 @@ def composition_line(result: PublishResult) -> str:
 
 
 def other_versions(
-    root: PurePosixPath, asset: Asset, pins: Mapping[str, int], product: str
+    root: PurePath, asset: Asset, pins: Mapping[str, int], product: str
 ) -> dict[str, tuple[list[int], int]]:
     """Each other pinned component's installed versions, and the one ``pins`` holds."""
     return {
@@ -201,14 +201,14 @@ def other_versions(
 def publish_textures(
     registry: Registry,
     *,
-    root: PurePosixPath,
+    root: PurePath,
     asset: Asset,
-    export: PurePosixPath,
+    export: Path,
     renderman: Path,
-    source: PurePosixPath | None = None,
+    source: Path | None = None,
 ) -> PublishTexturesResult:
     """Publish a Painter export as the next tex version, then the material derived to read it."""
-    exported = Path(export).resolve()
+    exported = export.resolve()
     files = _exported_files(exported)
     product_root = _product_root(root, asset, textures.PRODUCT)
     _, pins = compose.current_pins(root, asset)
@@ -228,9 +228,9 @@ def publish_textures(
         problem = f"{exc.filename} could not be copied into {staging} ({exc.strerror})"
         raise _refusal(exported, [problem], _discard(staging)) from exc
     version = _install(exported, product_root, staging)
-    path = PurePosixPath(product_root, layout.version_name(version))
+    path = product_root / layout.version_name(version)
     try:
-        installed = _register(registry, asset, textures.PRODUCT, version, path)
+        installed = _register(registry, root, asset, textures.PRODUCT, version, path)
     except UnregisteredVersionError as exc:
         raise PartialPublishTexturesError(
             f"{exc}; no material was derived", PublishTexturesResult(exc.version, None, None, ())
@@ -256,7 +256,7 @@ def publish_textures(
                 root=root,
                 asset=asset,
                 product=compose.MATERIAL,
-                layer=PurePosixPath(derived.layer),
+                layer=derived.layer,
             )
         except PartialPublishError as exc:
             raise PartialPublishTexturesError(
@@ -294,7 +294,7 @@ def _exported_files(exported: Path) -> list[Path]:
 
 
 def use_textures(
-    directory: Path, *, root: PurePosixPath, asset: Asset, pins: Mapping[str, int], version: int
+    directory: Path, *, root: PurePath, asset: Asset, pins: Mapping[str, int], version: int
 ) -> UseTexturesResult:
     """Write into ``directory`` the mtl ``pins`` names, reading its textures from tex ``version``.
 
@@ -309,7 +309,7 @@ def use_textures(
         return UseTexturesResult(None, None, (f"no material uses textures yet; {remedy}",))
     source = pins[compose.MATERIAL]
     source_named = _named_number(compose.MATERIAL, source)
-    tex_root = layout.product_root(PurePosixPath(asset_directory(root, asset)), textures.PRODUCT)
+    tex_root = layout.product_root(PurePath(asset_directory(root, asset)), textures.PRODUCT)
     new = Path(tex_root, layout.version_name(version))
     new_named = _named_number(textures.PRODUCT, version)
     layer_path = root / compose.layer_path(root, asset, compose.MATERIAL, source)
@@ -330,7 +330,7 @@ def use_textures(
             kept[name] = Path(older)
             return spelling
         rewritten[name] = Path(older)
-        return str(PurePosixPath(new, name).relative_to(root))
+        return (new / name).relative_to(root).as_posix()
 
     UsdUtils.ModifyAssetPaths(layer, retarget)
     warnings = [
@@ -409,7 +409,7 @@ def _current_command(asset: Asset, version: int) -> str:
 
 
 def _moved_meanwhile(
-    root: PurePosixPath,
+    root: PurePath,
     asset: Asset,
     moved: int | None,
     product: str,
@@ -448,14 +448,14 @@ class _Dependencies:
 def publish_product(
     registry: Registry,
     *,
-    root: PurePosixPath,
+    root: PurePath,
     asset: Asset,
     product: str,
-    layer: PurePosixPath,
-    source: PurePosixPath | None = None,
+    layer: Path,
+    source: Path | None = None,
 ) -> ProductVersion:
     """Install ``layer`` and the files it depends on as the product's next version; register it."""
-    exported = Path(layer).resolve()
+    exported = layer.resolve()
     product_root = _product_root(root, asset, product)
     _check_exported(exported)
     copies = _installable_files(root, exported)
@@ -474,18 +474,18 @@ def publish_product(
         raise _refusal(exported, problems, _discard(staging))
 
     version = _install(exported, product_root, staging)
-    path = PurePosixPath(product_root, layout.version_name(version), exported.name)
-    return _register(registry, asset, product, version, path)
+    path = product_root / layout.version_name(version) / exported.name
+    return _register(registry, root, asset, product, version, path)
 
 
-def _product_root(root: PurePosixPath, asset: Asset, product: str) -> Path:
+def _product_root(root: PurePath, asset: Asset, product: str) -> Path:
     directory = asset_directory(root, asset)
     if layout.slug(product) != product:
         raise PiperError(
             f"cannot name a product {product!r}: a product is named in lowercase letters, "
             f"digits, and underscores, such as {layout.slug(product) or 'geo'!r}"
         )
-    return Path(layout.product_root(PurePosixPath(directory), product))
+    return Path(layout.product_root(PurePath(directory), product))
 
 
 def _check_exported(exported: Path) -> None:
@@ -500,7 +500,7 @@ def _check_exported(exported: Path) -> None:
         )
 
 
-def _installable_files(root: PurePosixPath, exported: Path) -> list[PurePosixPath]:
+def _installable_files(root: PurePath, exported: Path) -> list[PurePosixPath]:
     """The files to copy into the version, relative to the export's directory."""
     export = exported.parent
     try:
@@ -528,7 +528,7 @@ def _installable_files(root: PurePosixPath, exported: Path) -> list[PurePosixPat
     return copies
 
 
-def _staged_problems(root: PurePosixPath, staging: Path, layer: Path) -> list[str]:
+def _staged_problems(root: PurePath, staging: Path, layer: Path) -> list[str]:
     """What stops the staged copy from installing, checked where it will be installed from."""
     try:
         dependencies = _dependencies(root, layer)
@@ -545,7 +545,7 @@ def _staged_problems(root: PurePosixPath, staging: Path, layer: Path) -> list[st
     return problems
 
 
-def _dependencies(root: PurePosixPath, layer: Path) -> _Dependencies:
+def _dependencies(root: PurePath, layer: Path) -> _Dependencies:
     with Ar.ResolverContextBinder(_resolver_context(root)):
         layers, assets, unresolved = UsdUtils.ComputeAllDependencies(Sdf.AssetPath(str(layer)))
     return _Dependencies(
@@ -556,7 +556,7 @@ def _dependencies(root: PurePosixPath, layer: Path) -> _Dependencies:
     )
 
 
-def _resolver_context(root: PurePosixPath) -> Ar.DefaultResolverContext:
+def _resolver_context(root: PurePath) -> Ar.DefaultResolverContext:
     # Passed to each walk and stage rather than set as the default search path,
     # which belongs to whichever application hosts the publish.
     return Ar.DefaultResolverContext([str(root)])
@@ -568,14 +568,14 @@ def _unresolved_or_dirty(dependencies: _Dependencies) -> list[str]:
     return problems
 
 
-def _is_pinnable(root: PurePosixPath, file: str) -> bool:
+def _is_pinnable(root: PurePath, file: str) -> bool:
     """Whether ``file`` is a file of an installed version, which a layer may pin."""
-    real = PurePosixPath(os.path.realpath(file))
-    version = layout.version_directory(PurePosixPath(os.path.realpath(root)), real)
+    real = Path(os.path.realpath(file))
+    version = layout.version_directory(Path(os.path.realpath(root)), real)
     return version is not None and real.relative_to(version).parts[0] != _SOURCE
 
 
-def _outside_problem(root: PurePosixPath, export: Path, file: str) -> str:
+def _outside_problem(root: PurePath, export: Path, file: str) -> str:
     if Path(file).is_relative_to(root):
         return (
             f"{file} is neither inside {export} nor pinnable: a pin names a file outside "
@@ -606,7 +606,7 @@ def _absolute_spellings(staging: Path, layer: Path) -> list[str]:
     ]
 
 
-def _composition_problems(root: PurePosixPath, layer: Path) -> list[str]:
+def _composition_problems(root: PurePath, layer: Path) -> list[str]:
     stage = Usd.Stage.Open(str(layer), _resolver_context(root), Usd.Stage.LoadAll)
     problems = [str(error) for error in stage.GetCompositionErrors()]
     default_prim = stage.GetRootLayer().defaultPrim
@@ -674,10 +674,12 @@ def _rename_onto_next_version(exported: Path, product_root: Path, staging: Path)
 
 
 def _register(
-    registry: Registry, asset: Asset, product: str, version: int, path: PurePosixPath
+    registry: Registry, root: PurePath, asset: Asset, product: str, version: int, path: Path
 ) -> ProductVersion:
+    """Record the installed version, spelled from the root, as every recorded path is."""
+    spelled = PurePosixPath(path.relative_to(root).as_posix())
     try:
-        record_id = registry.register(asset, product=product, version=version, path=path)
+        record_id = registry.register(asset, product=product, version=version, path=spelled)
     except RegistryError as exc:
         raise UnregisteredVersionError(
             f"installed {path}, but could not register it: {exc}; "

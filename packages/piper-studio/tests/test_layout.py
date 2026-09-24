@@ -1,5 +1,5 @@
 import os
-from pathlib import PurePosixPath
+from pathlib import PurePosixPath, PureWindowsPath
 
 import pytest
 from pxr import Sdf
@@ -97,3 +97,15 @@ def test_a_path_inside_a_version_names_that_version(path: str, version: str | No
     found = version_directory(root, PurePosixPath(os.path.normpath(root / path)))
 
     assert found == (root / version if version else None)
+
+
+def test_layout_follows_the_root_a_windows_machine_spells() -> None:
+    """A Windows machine works under its own root, and version paths stay inside it."""
+    root = PureWindowsPath("G:/sandwich/04_temp/piper_gate_c")
+    pan = asset_root(root, "kitchen", "frying_pan")
+
+    assert pan == PureWindowsPath("G:/sandwich/04_temp/piper_gate_c/asset/kitchen/frying_pan")
+    layer = pan / "publish" / "geo" / "v004" / "geo.usd"
+    assert version_directory(root, layer) == pan / "publish" / "geo" / "v004"
+    # What a record spells: relative to the root, with POSIX separators.
+    assert layer.relative_to(root).as_posix() == "asset/kitchen/frying_pan/publish/geo/v004/geo.usd"

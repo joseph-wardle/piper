@@ -1,7 +1,7 @@
 """An asset's work area: the mutable files a context is authored in, and the stamp saying whose."""
 
 from collections.abc import Mapping
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath
 
 from piper.errors import PiperError
 from piper.tracker import Asset, Tracker
@@ -16,13 +16,13 @@ CONTEXT_KEY = "piper_context"
 STAMP_KEYS = (PRODUCTION_KEY, ASSET_ID_KEY, CONTEXT_KEY)
 
 
-def prepare_work(*, root: PurePosixPath, asset: Asset, context: Context) -> Path:
+def prepare_work(*, root: PurePath, asset: Asset, context: Context) -> Path:
     """Make the directory ``asset``'s work in ``context`` is kept in, and name its work file."""
     if context.subject != "asset":
         raise PiperError(
             f"{context.name} is {context.subject} work, and {asset.name!r} is an asset"
         )
-    file = Path(layout.work_file(PurePosixPath(asset_directory(root, asset)), context))
+    file = Path(layout.work_file(PurePath(asset_directory(root, asset)), context))
     try:
         file.parent.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
@@ -55,7 +55,7 @@ def stamped_asset(
             f"this scene is work on an asset {production.name} does not have (id {asset_id})"
         )
     context = context_named(carried[CONTEXT_KEY] or "", subject="asset")
-    directory = PurePosixPath(asset_directory(production.root, asset))
+    directory = PurePath(asset_directory(production.local_root, asset))
     expected = Path(layout.work_file(directory, context))
     if scene.resolve() != expected.resolve():
         raise PiperError(

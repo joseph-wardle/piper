@@ -1,7 +1,7 @@
 """Where this studio keeps production entities on disk."""
 
 import re
-from pathlib import PurePosixPath
+from pathlib import PurePath
 
 from piper_studio.context import Context
 
@@ -25,17 +25,17 @@ def usable_pipe_name(pipe_name: str) -> bool:
     return slug(pipe_name) == pipe_name and pipe_name[:1].isalpha()
 
 
-def asset_root(root: PurePosixPath, folder: str, pipe_name: str) -> PurePosixPath:
+def asset_root(root: PurePath, folder: str, pipe_name: str) -> PurePath:
     """The directory that holds everything belonging to one asset."""
     return root / "asset" / slug(folder) / slug(pipe_name)
 
 
-def product_root(asset_root: PurePosixPath, product: str) -> PurePosixPath:
+def product_root(asset_root: PurePath, product: str) -> PurePath:
     """The directory that holds every version of one of an asset's products."""
     return asset_root / "publish" / product
 
 
-def work_file(asset_root: PurePosixPath, context: Context) -> PurePosixPath:
+def work_file(asset_root: PurePath, context: Context) -> PurePath:
     """The one file an asset's work in ``context`` is kept in, named for the asset."""
     return asset_root / "work" / context.name / f"{asset_root.name}.{context.extension}"
 
@@ -54,7 +54,7 @@ def version_number(name: str) -> int | None:
     return int(matched[1]) if matched else None
 
 
-def version_directory(root: PurePosixPath, path: PurePosixPath) -> PurePosixPath | None:
+def version_directory(root: PurePath, path: PurePath) -> PurePath | None:
     """The product version directory that ``path`` lies inside, if it lies inside one."""
     if not path.is_relative_to(root):
         return None

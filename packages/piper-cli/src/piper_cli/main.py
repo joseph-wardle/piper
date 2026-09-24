@@ -2,7 +2,7 @@
 
 import sys
 from collections.abc import Sequence
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Annotated
 
 from cyclopts import App, Parameter
@@ -65,6 +65,12 @@ def launch_houdini_command() -> None:
     launch.houdini(profile.active())
 
 
+@launch_app.command(name="painter")
+def launch_painter_command() -> None:
+    """Run Substance Painter, working in the active profile, with Piper's plugin loaded."""
+    launch.painter(profile.active())
+
+
 @app.command(name="open")
 def open_command(asset: str, context: str, /) -> None:
     """Become the context's host, with an asset's work in that context open.
@@ -78,13 +84,9 @@ def open_command(asset: str, context: str, /) -> None:
     """
     production = _active_production()
     chosen = context_named(context, subject="asset")
-    launchers = {"maya": launch.maya, "houdini": launch.houdini}
-    if chosen.host not in launchers:
-        raise PiperError(
-            f"{chosen.name} work is done in {chosen.host}, which piper cannot launch yet"
-        )
+    launchers = {"maya": launch.maya, "houdini": launch.houdini, "painter": launch.painter}
     found = _asset_matching(tracker_for(production), asset)
-    prepare_work(root=production.root, asset=found, context=chosen)
+    prepare_work(root=production.local_root, asset=found, context=chosen)
     print(f"Opening {chosen.name} work on {found.name!r}")
     launchers[chosen.host](profile.active(), work=(found, chosen))
 
@@ -136,7 +138,7 @@ def create_asset_command(
     try:
         result = create_asset(
             tracker_for(production),
-            root=production.root,
+            root=production.local_root,
             types=production.types,
             name=name,
             type=type,
@@ -163,6 +165,7 @@ def publish_command(
     /,
     *,
     pinned: Annotated[tuple[str, ...], Parameter(name="--with")] = (),
+    source: Path | None = None,
     as_json: Annotated[bool, Parameter(name="--json")] = False,
 ) -> None:
     """Publish a component: install the export, build the asset version pinning it, make it current.
@@ -183,6 +186,8 @@ def publish_command(
         The exported USD layer, or for tex the directory Painter exported into.
     pinned
         Another component's version to pin instead of the current one's, as geo=5.
+    source
+        The work file the export came from, kept in the version under src/.
     as_json
         Write the result as JSON for another program.
     """
@@ -197,15 +202,16 @@ def publish_command(
     production = _active_production()
     found = _asset_named(tracker_for(production), asset)
     if product == textures.PRODUCT:
-        _publish_textures(production, found, export, as_json)
+        _publish_textures(production, found, export, source, as_json)
         return
     try:
         result = publish(
             registry_for(production),
-            root=production.root,
+            root=production.local_root,
             asset=found,
             product=product,
-            layer=PurePosixPath(export),
+            layer=export,
+            source=source,
             with_versions=_with_versions(pinned),
         )
     except PartialPublishError as exc:
@@ -218,16 +224,19 @@ def publish_command(
         render.publish_result_as_text(result)
 
 
-def _publish_textures(production: Production, asset: Asset, export: Path, as_json: bool) -> None:
+def _publish_textures(
+    production: Production, asset: Asset, export: Path, source: Path | None, as_json: bool
+) -> None:
     from piper_studio.publish import PartialPublishTexturesError, publish_textures
 
     try:
         result = publish_textures(
             registry_for(production),
-            root=production.root,
+            root=production.local_root,
             asset=asset,
-            export=PurePosixPath(export),
+            export=export,
             renderman=textures.renderman_install(),
+            source=source,
         )
     except PartialPublishTexturesError as exc:
         if as_json:
@@ -278,8 +287,8 @@ def current_command(
     production = _active_production()
     found = _asset_named(tracker_for(production), asset)
     if version is not None:
-        compose.make_current(production.root, found, version)
-    number, pins = compose.current_pins(production.root, found)
+        compose.make_current(production.local_root, found, version)
+    number, pins = compose.current_pins(production.local_root, found)
     if as_json:
         render.current_as_json(found, number, pins)
     else:

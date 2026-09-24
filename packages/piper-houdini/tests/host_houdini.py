@@ -206,7 +206,7 @@ def publish_geo(root: Path, asset: "Asset", version: int) -> None:
         root=PurePosixPath(root),
         asset=asset,
         product="geo",
-        layer=PurePosixPath(layer),
+        layer=layer,
     )
 
 
@@ -870,7 +870,7 @@ def check_material(production: "Production", check: "Callable[..., None]") -> No
         registry,
         root=production.root,
         asset=teapot,
-        export=PurePosixPath(export),
+        export=export,
         renderman=renderman,
     )
     assert first.textures.version == 1 and first.material is None, first
@@ -915,7 +915,7 @@ def check_material(production: "Production", check: "Callable[..., None]") -> No
         registry,
         root=production.root,
         asset=teapot,
-        export=PurePosixPath(export),
+        export=export,
         renderman=renderman,
     )
     check(

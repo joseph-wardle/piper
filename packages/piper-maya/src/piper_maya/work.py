@@ -17,7 +17,7 @@ def open_work(
     tracker: Tracker, production: Production, asset: Asset, context: Context
 ) -> Path | None:
     """Open ``asset``'s work in ``context``, starting it when there is none yet."""
-    file = prepare_work(root=production.root, asset=asset, context=context)
+    file = prepare_work(root=production.local_root, asset=asset, context=context)
     if not mel.eval('saveChanges("")'):
         return None
 

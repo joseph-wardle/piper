@@ -2,7 +2,7 @@
 
 import tempfile
 from collections.abc import Mapping
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from types import MappingProxyType
 
 from maya import cmds
@@ -60,7 +60,9 @@ def publish_work(
     with tempfile.TemporaryDirectory(
         prefix="piper_publish_", ignore_cleanup_errors=True
     ) as directory:
-        layer = export_selection(Path(directory), asset_directory(production.root, asset).name)
+        layer = export_selection(
+            Path(directory), asset_directory(production.local_root, asset).name
+        )
         source = scene
         if cmds.file(query=True, modified=True):
             source = Path(directory) / scene.name
@@ -77,18 +79,18 @@ def publish_work(
                 ) from exc
         return publish(
             registry,
-            root=production.root,
+            root=production.local_root,
             asset=asset,
             product=PRODUCT,
-            layer=PurePosixPath(layer),
-            source=PurePosixPath(source),
+            layer=layer,
+            source=source,
             with_versions=with_versions,
         )
 
 
 def preview_work(production: Production, asset: Asset, directory: Path) -> Path:
     """Write into ``directory`` what publishing the selection would compose."""
-    root = production.root
+    root = production.local_root
     layer = export_selection(directory, asset_directory(root, asset).name)
     _, pins = compose.current_pins(root, asset)
     return compose.write_preview(directory, root=root, asset=asset, pins=pins, layer=layer)

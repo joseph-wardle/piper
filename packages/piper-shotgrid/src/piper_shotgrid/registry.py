@@ -5,8 +5,9 @@ leave this module.
 """
 
 import getpass
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from typing import Any
+from urllib.parse import quote
 
 import shotgun_api3
 
@@ -20,8 +21,11 @@ _TIMEOUT_SECONDS = 30
 class ShotGridRegistry:
     """PublishedFiles in one ShotGrid project, and nothing else on its site."""
 
-    def __init__(self, *, site: str, script: str, key: str, project: int) -> None:
+    def __init__(
+        self, *, site: str, script: str, key: str, project: int, root: PurePosixPath
+    ) -> None:
         self._site = site
+        self._root = root
         self._project = project
         try:
             self._shotgrid = shotgun_api3.Shotgun(
@@ -60,7 +64,8 @@ class ShotGridRegistry:
             "name": product,
             "version_number": version,
             "code": code,
-            "path": {"url": Path(path).as_uri(), "name": path.name},
+            # Spelled from the POSIX root: the record is read from every platform.
+            "path": {"url": f"file://{quote(str(self._root / path))}", "name": path.name},
             # `created_by` is the script for every publish, so the OS login is recorded here.
             "description": f"published by {getpass.getuser()}",
         }

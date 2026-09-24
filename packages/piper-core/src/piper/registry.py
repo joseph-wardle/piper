@@ -15,7 +15,7 @@ class Registry(Protocol):
         """Record an installed version and return the record's opaque id.
 
         ``path`` is the version's root layer, or the version's directory for a
-        product with none. Refuses a version already recorded for the same
-        asset and product.
+        product with none, spelled from the production root as every recorded
+        path is. Refuses a version already recorded for the same asset and product.
         """
         ...

@@ -2,7 +2,7 @@
 
 import shutil
 from collections.abc import Mapping
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath
 from types import MappingProxyType
 
 import hou
@@ -32,9 +32,9 @@ def scene_asset(tracker: Tracker, production: Production) -> Asset:
     return stamped_asset(tracker, production, scene_stamp(), Path(hou.hipFile.path()), _REMEDY)
 
 
-def scene_pin(root: PurePosixPath, asset: Asset) -> tuple[int, str]:
+def scene_pin(root: PurePath, asset: Asset) -> tuple[int, str]:
     """The asset version the scene loads, and the parm loading it."""
-    directory = layout.product_root(PurePosixPath(asset_directory(root, asset)), compose.ASSET)
+    directory = layout.product_root(PurePath(asset_directory(root, asset)), compose.ASSET)
     loads: list[tuple[str, int]] = []
     for parm, path in hou.fileReferences():
         version = layout.version_directory(root, root / hou.text.expandString(path))
@@ -101,11 +101,11 @@ def publish_work(
     source = Path(hou.hipFile.path()) if saved else _copy_scene(layer.parent)
     return publish(
         registry,
-        root=production.root,
+        root=production.local_root,
         asset=asset,
         product=PRODUCT,
-        layer=PurePosixPath(layer),
-        source=PurePosixPath(source),
+        layer=layer,
+        source=source,
         with_versions=with_versions,
     )
 

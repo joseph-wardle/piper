@@ -13,4 +13,5 @@ def registry_for(production: Production) -> Registry:
         script=production.shotgrid.script,
         key=shotgrid_key(),
         project=production.shotgrid.project,
+        root=production.root,
     )

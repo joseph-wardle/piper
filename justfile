@@ -7,6 +7,7 @@ sync:
     uv sync
     UV_PROJECT_ENVIRONMENT=packages/piper-maya/.venv uv sync --package piper-maya --no-dev --locked
     UV_PROJECT_ENVIRONMENT=packages/piper-houdini/.venv uv sync --package piper-houdini --no-dev --locked
+    UV_PROJECT_ENVIRONMENT=packages/piper-painter/.venv uv sync --package piper-painter --no-dev --locked
 
 format:
     uv run ruff format .

@@ -105,7 +105,7 @@ def publish_to_scratch(
     registry: Registry, asset: Asset, product: str, layer: Path
 ) -> ProductVersion:
     return publish_product(
-        registry, root=PurePosixPath(ROOT), asset=asset, product=product, layer=PurePosixPath(layer)
+        registry, root=PurePosixPath(ROOT), asset=asset, product=product, layer=layer
     )
 
 
@@ -240,7 +240,9 @@ def test_pinned_components_publish_compose_and_register_in_the_write_project(
 ) -> None:
     key = os.environ["PIPER_SHOTGRID_KEY"]
     tracker = ShotGridTracker(site=SITE, script=SCRIPT, key=key, project=WRITE_PROJECT)
-    registry = ShotGridRegistry(site=SITE, script=SCRIPT, key=key, project=WRITE_PROJECT)
+    registry = ShotGridRegistry(
+        site=SITE, script=SCRIPT, key=key, project=WRITE_PROJECT, root=PurePosixPath(ROOT)
+    )
     name, folder = f"Piper Test {run_id}", f"piper_test_{run_id}"
 
     def publish_layer(registry: Registry, product: str, text: str) -> ProductVersion:
@@ -286,10 +288,15 @@ def test_pinned_components_publish_compose_and_register_in_the_write_project(
             assert record["description"] == f"published by {getpass.getuser()}"
 
         with pytest.raises(RegistryError, match="already registered"):
-            registry.register(asset, product="entry", version=2, path=entry_2.path)
+            spelled = PurePosixPath(entry_2.path.relative_to(ROOT).as_posix())
+            registry.register(asset, product="entry", version=2, path=spelled)
 
         refusing = ShotGridRegistry(
-            site=SITE, script=SCRIPT, key="not-a-real-key", project=WRITE_PROJECT
+            site=SITE,
+            script=SCRIPT,
+            key="not-a-real-key",
+            project=WRITE_PROJECT,
+            root=PurePosixPath(ROOT),
         )
         with pytest.raises(UnregisteredVersionError) as raised:
             publish_layer(refusing, "geo", GEO)

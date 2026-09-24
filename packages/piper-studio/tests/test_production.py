@@ -1,4 +1,5 @@
-from pathlib import Path, PurePosixPath
+import sys
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
 
@@ -32,6 +33,37 @@ def test_reads_the_production_its_storage_and_its_shotgrid_project(tmp_path: Pat
     assert production.shotgrid.site == "https://byuanimation.shotgunstudio.com"
     assert production.shotgrid.script == "sandwich_pipeline"
     assert production.shotgrid.project == 716
+
+
+def test_a_windows_machine_reaches_the_root_by_the_spelling_the_configuration_gives_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    production = load_production(write_production(tmp_path, _COMPLETE))
+    assert production.windows_root is None
+    assert production.local_root == production.root
+
+    spelled = _COMPLETE.replace("types", 'windows_root = "G:/sandwich/05_production"\ntypes')
+    production = load_production(write_production(tmp_path, spelled))
+    assert production.windows_root == PureWindowsPath("G:/sandwich/05_production")
+    assert production.local_root == production.root
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert production.local_root == PureWindowsPath("G:/sandwich/05_production")
+    assert production.root == PurePosixPath("/groups/sandwich/05_production")
+
+
+def test_a_windows_machine_without_a_windows_root_is_told_what_to_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    production = load_production(write_production(tmp_path, _COMPLETE))
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    with pytest.raises(ConfigError, match="sets no windows_root"):
+        _ = production.local_root
+
+    relative = _COMPLETE.replace("types", 'windows_root = "sandwich/05_production"\ntypes')
+    with pytest.raises(ConfigError, match="drive or share path"):
+        load_production(write_production(tmp_path, relative))
 
 
 def test_the_releases_a_production_is_made_in_are_optional(tmp_path: Path) -> None:

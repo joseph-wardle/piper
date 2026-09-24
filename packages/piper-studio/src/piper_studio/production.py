@@ -1,10 +1,11 @@
 """Reads the configuration that describes one production."""
 
 import os
+import sys
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from typing import TypeVar
 
 from piper.errors import ConfigError
@@ -39,7 +40,9 @@ class Software:
 class Production:
     """One production, where it is stored, and the systems that hold it.
 
-    ``types`` are the asset types artists may create, chosen from those the
+    ``root`` is the production root as every recorded path spells it, a POSIX
+    path. ``windows_root`` is the same directory as a Windows machine reaches
+    it. ``types`` are the asset types artists may create, chosen from those the
     tracker offers.
     """
 
@@ -48,6 +51,19 @@ class Production:
     types: tuple[str, ...]
     shotgrid: ShotGridConfig
     software: Software = Software()
+    windows_root: PureWindowsPath | None = None
+
+    @property
+    def local_root(self) -> PurePath:
+        """The root as this machine spells it: the one place a path becomes this machine's."""
+        if sys.platform != "win32":
+            return self.root
+        if self.windows_root is None:
+            raise ConfigError(
+                f"production configuration: {self.name} sets no windows_root, which a "
+                f"Windows machine needs to reach {self.root}"
+            )
+        return self.windows_root
 
 
 def load_production(path: Path | None = None) -> Production:
@@ -64,6 +80,7 @@ def load_production(path: Path | None = None) -> Production:
     return Production(
         name=_required(document, "name", str, path),
         root=_root(document, path),
+        windows_root=_windows_root(document, path),
         types=_types(document, path),
         software=_software(document, path),
         shotgrid=ShotGridConfig(
@@ -87,6 +104,19 @@ def _root(document: Mapping[str, object], path: Path) -> PurePosixPath:
     root = PurePosixPath(_required(document, "root", str, path))
     if not root.is_absolute():
         raise ConfigError(f"production configuration: root in {path} must be absolute, not {root}")
+    return root
+
+
+def _windows_root(document: Mapping[str, object], path: Path) -> PureWindowsPath | None:
+    spelled = _optional(document, "windows_root", str, path)
+    if spelled is None:
+        return None
+    root = PureWindowsPath(spelled)
+    if not root.is_absolute():
+        raise ConfigError(
+            f"production configuration: windows_root in {path} must be a drive or share path, "
+            f"such as G:/sandwich, not {spelled}"
+        )
     return root
 
 

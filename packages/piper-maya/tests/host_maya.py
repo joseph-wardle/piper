@@ -5,7 +5,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
@@ -406,7 +406,7 @@ def check_publish_work(production: "Production", check: "Callable[..., None]") -
             root=production.root,
             asset=kettle,
             product="mtl",
-            layer=PurePosixPath(export / "mtl.usda"),
+            layer=export / "mtl.usda",
         )
 
     from piper_maya import ui
