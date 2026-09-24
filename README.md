@@ -20,7 +20,7 @@ production. `piper find` reads assets and shots from the real tracker,
 | `packages/piper-shotgrid` | `piper-shotgrid` | `piper_shotgrid` | ShotGrid behind Piper's contracts |
 | `packages/piper-cli` | `piper-cli` | `piper_cli` | The `piper` command |
 | `packages/piper-maya` | `piper-maya` | `piper_maya` | Piper inside Maya: its menu, and opening, previewing, and publishing work |
-| `packages/piper-houdini` | `piper-houdini` | `piper_houdini` | Piper inside Houdini: its menu, and opening and publishing work |
+| `packages/piper-houdini` | `piper-houdini` | `piper_houdini` | Piper inside Houdini: its menu, its material node, and opening and publishing work |
 
 `piper-core` is imported in-process by DCC integrations, so it targets the
 2025 VFX Reference Platform python version `3.11.x`. This project will update 
@@ -131,6 +131,26 @@ Current is one layer, `publish/asset/frying_pan.usda`, sublayering the version.
 A publish moves it last, and this command is the only other thing that moves it;
 every older asset version stays where it is.
 
+```
+piper convert ./painter_export
+piper publish "Frying Pan" tex ./painter_export
+```
+
+`convert` writes a RenderMan `.tex` beside every PNG Painter exported, named
+`<slot>_<map>.<udim>.png`: colour maps become ACEScg half EXR, data maps TIFF
+at the depth exported. It needs RenderMan, found through `RMANTREE`, and no
+production; with the **Piper Material** node pointed at that directory, a class
+project has its materials too. Publishing `tex` installs the export as one version,
+`publish/tex/v001/`, with a `.tex` converted from each PNG the same way; a
+`.tex` already in the export is never installed. Then it derives the current
+material to read the version: every texture path in the current `mtl` that
+lies in a `tex` version is pointed at the new one, and the result is published
+as the next `mtl`, which builds the asset version and makes it current. The
+derived layer says what it came from in its own metadata. A material that reads
+no published textures is left alone and said; what the export holds that no
+material reads, a texture set no slot of the pinned geo has, and a map whose
+tiles changed are installed and said.
+
 `create` and `publish` write to whichever project and root the configuration
 names, and the example above is the live production. Until the next film has
 its own project, point `PIPER_PRODUCTION` at a configuration for the inactive
@@ -168,11 +188,20 @@ that closes with an error says so.
 
 Lookdev is Houdini's. **Piper ▸ Open Work…** opens the asset's one lookdev file,
 `work/lookdev/frying_pan.hipnc`, saying so when the asset version it loads is no
-longer current, and starts a new one from the asset version that is current: in `/stage`, a Sublayer of that version, a Layer Break, a Material
-Library whose prefix is the asset's `mtl` scope, the `OUT_mtl` output a publish
-saves, and below it a dome light, a camera, and Karma render settings for looking,
-which are never published. Materials are named for the slots the geometry left
-under `mtl`. **Piper ▸ Publish…** saves the layer above `OUT_mtl`, says which asset
+longer current or the textures it reads are older than the newest published, and
+starts a new one from the asset version that is current: in `/stage`, a Sublayer
+of that version, a Layer Break, a Material Library whose prefix is the asset's
+`mtl` scope, the `OUT_mtl` output a publish saves, and below it a dome light, a
+camera, and Karma render settings for looking, which are never published. Inside
+the library sits a **Piper Material** node pointed at the newest `tex` version,
+its materials added once: its Add Materials button adds, for each texture set in
+its directory that has no material yet, a PxrSurface reading the `.tex` files and
+a UsdPreviewSurface reading the `.jpg` previews, wired by the map table, every path
+an expression off the node's one parm. It never touches a material that exists.
+**Piper ▸ Use Textures…** points that node at another `tex` version, so every
+material reads it, and says what they read that the version lacks. Materials are
+named for the slots the geometry left under `mtl`, and a texture set is named for
+its slot, so the generated ones fill them. **Piper ▸ Publish…** saves the layer above `OUT_mtl`, says which asset
 version the scene loads and which is current, what each slot of the geo being
 pinned was given, and offers the other components' versions to pin, then publishes
 it as the next `mtl` version. A layer that sublayers the asset, which a deleted Layer Break does,

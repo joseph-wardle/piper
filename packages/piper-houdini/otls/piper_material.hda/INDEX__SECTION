@@ -1,0 +1,10 @@
+Operator:     piper::material
+Label:        Piper Material
+Path:         oplib:/piper::Vop/material?piper::Vop/material
+Icon:         VOP_subnet
+Table:        Vop
+Inputs:       0 to 0
+Outputs:      0
+Subnet:       true
+Python:       false
+Empty:        false

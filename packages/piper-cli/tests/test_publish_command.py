@@ -122,3 +122,82 @@ def test_the_command_starts_without_loading_usd() -> None:
     )
 
     assert loaded.stdout == "False\n"
+
+
+_OIIOTOOL = f"""\
+#!{sys.executable}
+import sys
+from pathlib import Path
+Path(sys.argv[-1]).touch()
+"""
+
+
+@pytest.fixture
+def painter_export(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A Painter export of one tile, with RenderMan's oiiotool stood in for through RMANTREE."""
+    oiiotool = tmp_path / "RenderManProServer" / "bin" / "rmanoiiotool"
+    oiiotool.parent.mkdir(parents=True)
+    oiiotool.write_text(_OIIOTOOL, encoding="utf-8")
+    oiiotool.chmod(0o755)
+    monkeypatch.setenv("RMANTREE", str(oiiotool.parents[1]))
+    export = tmp_path / "painter"
+    export.mkdir()
+    (export / "body_BaseColor.1001.png").touch()
+    (export / "body_BaseColor.1001.jpg").touch()
+    return export
+
+
+def test_tex_installs_the_export_converted_and_says_no_material_reads_it_yet(
+    run: Run,
+    tracker: Tracker,
+    root: Path,
+    layer: Path,
+    painter_export: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert run(tracker, "publish", "Frying Pan", "tex", str(painter_export)) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        "Published tex v001 of 'Frying Pan'",
+        installed(root, "tex", ""),
+        "no material uses textures yet; `piper open 'Frying Pan' lookdev` builds one",
+    ]
+    assert captured.err == ""
+    assert (Path(installed(root, "tex", "")) / "body_BaseColor.1001.tex").is_file()
+
+
+def test_tex_json_carries_the_textures_the_material_and_the_warnings_and_refuses_with(
+    run: Run,
+    tracker: Tracker,
+    root: Path,
+    layer: Path,
+    painter_export: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert run(tracker, "publish", "Frying Pan", "tex", str(painter_export), "--json") == 0
+    assert run(tracker, "publish", "Frying Pan", "tex", str(painter_export), "--with", "geo=1") == 1
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == {
+        "asset": {
+            "id": "7701",
+            "name": "Frying Pan",
+            "type": "Prop",
+            "folder": "kitchen",
+            "pipe_name": "frying_pan",
+        },
+        "textures": {
+            "product": "tex",
+            "version": 1,
+            "path": installed(root, "tex", ""),
+            "record_id": "6601",
+        },
+        "derived_from": None,
+        "material": None,
+        "warnings": ["no material uses textures yet; `piper open 'Frying Pan' lookdev` builds one"],
+    }
+    assert captured.err == (
+        "piper: cannot pin with --with while publishing tex: the material is derived from the "
+        "current asset version's\n"
+    )

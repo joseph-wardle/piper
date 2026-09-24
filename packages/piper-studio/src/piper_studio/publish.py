@@ -15,7 +15,7 @@ from pxr import Ar, Sdf, Tf, Usd, UsdUtils
 from piper.errors import PiperError, RegistryError
 from piper.registry import Registry
 from piper.tracker import Asset
-from piper_studio import compose, layout
+from piper_studio import compose, layout, textures
 from piper_studio.storage import asset_directory
 
 _SOURCE = "src"
@@ -58,6 +58,37 @@ class PartialPublishError(PiperError):
     def __init__(self, message: str, result: PublishResult) -> None:
         super().__init__(message)
         self.result = result
+
+
+@dataclass(frozen=True, slots=True)
+class PublishTexturesResult:
+    """The textures installed, and the material publish that reads them, when one was derived.
+
+    ``material`` is None when nothing was derived, and ``warnings`` say why;
+    ``derived_from`` is the mtl version the material came from, or None with it.
+    """
+
+    textures: ProductVersion
+    material: PublishResult | None
+    derived_from: int | None
+    warnings: tuple[str, ...]
+
+
+class PartialPublishTexturesError(PiperError):
+    """The textures are installed, but a later step failed; ``result`` says what exists."""
+
+    def __init__(self, message: str, result: PublishTexturesResult) -> None:
+        super().__init__(message)
+        self.result = result
+
+
+@dataclass(frozen=True, slots=True)
+class UseTexturesResult:
+    """The next material's layer and the mtl version it came from; or neither, and why not."""
+
+    layer: Path | None
+    derived_from: int | None
+    warnings: tuple[str, ...]
 
 
 def publish(
@@ -136,9 +167,14 @@ def publish(
     raise PartialPublishError(f"{published}, but {why}", built)
 
 
-def published_line(result: PublishResult) -> str:
+def published_line(component: ProductVersion) -> str:
     """Which component version a publish installed, and of which asset, as one sentence."""
-    return f"Published {_named(result.component)} of {result.component.asset.name!r}"
+    return f"Published {_named(component)} of {component.asset.name!r}"
+
+
+def derived_line(material: ProductVersion, derived_from: int) -> str:
+    """Which material a texture publish derived, and from which, as one sentence."""
+    return f"Derived {_named(material)} from {_named_number(material.product, derived_from)}"
 
 
 def composition_line(result: PublishResult) -> str:
@@ -162,8 +198,210 @@ def other_versions(
     }
 
 
+def publish_textures(
+    registry: Registry,
+    *,
+    root: PurePosixPath,
+    asset: Asset,
+    export: PurePosixPath,
+    renderman: Path,
+    source: PurePosixPath | None = None,
+) -> PublishTexturesResult:
+    """Publish a Painter export as the next tex version, then the material derived to read it."""
+    exported = Path(export).resolve()
+    files = _exported_files(exported)
+    product_root = _product_root(root, asset, textures.PRODUCT)
+    _, pins = compose.current_pins(root, asset)
+
+    staging = _staging(exported, product_root)
+    try:
+        textures.convert(exported, renderman=renderman, into=staging)
+    except PiperError as exc:
+        raise _refusal(exported, [str(exc)], _discard(staging)) from exc
+    try:
+        for file in files:
+            shutil.copyfile(file, staging / file.name)
+        if source is not None:
+            (staging / _SOURCE).mkdir()
+            shutil.copyfile(source, staging / _SOURCE / source.name)
+    except OSError as exc:
+        problem = f"{exc.filename} could not be copied into {staging} ({exc.strerror})"
+        raise _refusal(exported, [problem], _discard(staging)) from exc
+    version = _install(exported, product_root, staging)
+    path = PurePosixPath(product_root, layout.version_name(version))
+    try:
+        installed = _register(registry, asset, textures.PRODUCT, version, path)
+    except UnregisteredVersionError as exc:
+        raise PartialPublishTexturesError(
+            f"{exc}; no material was derived", PublishTexturesResult(exc.version, None, None, ())
+        ) from exc
+    published = f"published {_named(installed)}"
+
+    with tempfile.TemporaryDirectory(prefix="piper_mtl_", ignore_cleanup_errors=True) as directory:
+        try:
+            derived = use_textures(
+                Path(directory), root=root, asset=asset, pins=pins, version=version
+            )
+        except PiperError as exc:
+            raise PartialPublishTexturesError(
+                f"{published}, but could not derive the material: {exc}; "
+                "publishing again installs another version",
+                PublishTexturesResult(installed, None, None, ()),
+            ) from exc
+        if derived.layer is None:
+            return PublishTexturesResult(installed, None, None, derived.warnings)
+        try:
+            material = publish(
+                registry,
+                root=root,
+                asset=asset,
+                product=compose.MATERIAL,
+                layer=PurePosixPath(derived.layer),
+            )
+        except PartialPublishError as exc:
+            raise PartialPublishTexturesError(
+                f"{published}; {exc}",
+                PublishTexturesResult(
+                    installed, exc.result, derived.derived_from, derived.warnings
+                ),
+            ) from exc
+        except PiperError as exc:
+            raise PartialPublishTexturesError(
+                f"{published}, but could not publish the derived material: {exc}; "
+                "publishing again installs another version",
+                PublishTexturesResult(installed, None, None, derived.warnings),
+            ) from exc
+    return PublishTexturesResult(installed, material, derived.derived_from, derived.warnings)
+
+
+def _exported_files(exported: Path) -> list[Path]:
+    """The files of a Painter export to install: all of them but textures, which are converted."""
+    if not exported.is_dir():
+        raise PiperError(f"cannot publish {exported}: it is not a directory")
+    if "publish" in exported.parts:
+        raise PiperError(
+            f"cannot publish {exported}: it is inside a publish directory; "
+            "publish the export it came from"
+        )
+    files = sorted(exported.iterdir())
+    for file in files:
+        if not file.is_file():
+            raise PiperError(
+                f"cannot publish {exported}: {file.name} is not a file, and a Painter export "
+                "is flat"
+            )
+    return [file for file in files if file.suffix != textures.TEXTURE]
+
+
+def use_textures(
+    directory: Path, *, root: PurePosixPath, asset: Asset, pins: Mapping[str, int], version: int
+) -> UseTexturesResult:
+    """Write into ``directory`` the mtl ``pins`` names, reading its textures from tex ``version``.
+
+    A texture path is rewritten when it lies in a tex version and its file, or
+    a tile of it, is in ``version``; otherwise it is kept, still resolving in
+    the older version, and said. Said too: what ``version`` holds that the
+    material does not read, a texture set that is no slot of the pinned geo,
+    and a map whose tiles changed. With nothing rewritten, there is no layer.
+    """
+    if compose.MATERIAL not in pins:
+        remedy = f"`piper open {asset.name!r} lookdev` builds one"
+        return UseTexturesResult(None, None, (f"no material uses textures yet; {remedy}",))
+    source = pins[compose.MATERIAL]
+    source_named = _named_number(compose.MATERIAL, source)
+    tex_root = layout.product_root(PurePosixPath(asset_directory(root, asset)), textures.PRODUCT)
+    new = Path(tex_root, layout.version_name(version))
+    new_named = _named_number(textures.PRODUCT, version)
+    layer_path = root / compose.layer_path(root, asset, compose.MATERIAL, source)
+    layer = Sdf.Layer.OpenAsAnonymous(str(layer_path))
+    if layer is None:
+        raise PiperError(f"{source_named} at {layer_path} cannot be read")
+
+    # Each name the material reads from a tex version, and the version it read it from.
+    rewritten: dict[str, Path] = {}
+    kept: dict[str, Path] = {}
+
+    def retarget(spelling: str) -> str:
+        older = layout.version_directory(root, root / spelling)
+        if older is None or older.parent != tex_root:
+            return spelling
+        name = PurePosixPath(spelling).name
+        if not textures.tiles(new, name):
+            kept[name] = Path(older)
+            return spelling
+        rewritten[name] = Path(older)
+        return str(PurePosixPath(new, name).relative_to(root))
+
+    UsdUtils.ModifyAssetPaths(layer, retarget)
+    warnings = [
+        f"{name} is not in {new_named}, so the material keeps reading it from "
+        f"{_named_directory(older)}"
+        for name, older in sorted(kept.items())
+    ]
+    if not rewritten:
+        why = (
+            f"nothing {source_named} reads is in {new_named}"
+            if kept
+            else f"{source_named} reads no published textures"
+        )
+        warnings.append(f"{why}, so no material was derived; point it at {new_named} in Houdini")
+        return UseTexturesResult(None, None, tuple(warnings))
+
+    held = {map for file in new.iterdir() if (map := _map_of(file.name))}
+    read = {map for name in rewritten if (map := _map_of(name))}
+    warnings += [
+        f"{new_named} holds {map}, which {source_named} does not read"
+        for map in sorted(held - read)
+    ]
+    if compose.GEOMETRY in pins:
+        slots = compose.slots(root, asset, pins)
+        geo = _named_number(compose.GEOMETRY, pins[compose.GEOMETRY])
+        listed = ", ".join(slots) or "none"
+        sets = {map.rpartition("_")[0] for map in held}
+        warnings += [
+            f"{slot} is a texture set of {new_named}, but {geo} has no slot named {slot} "
+            f"(slots: {listed})"
+            for slot in sorted(sets - set(slots))
+        ]
+    compared = {map: older for name, older in rewritten.items() if (map := _map_of(name))}
+    for map, older in sorted(compared.items()):
+        before, after = _udims(older, map), _udims(new, map)
+        if before != after:
+            warnings.append(
+                f"{map} has tiles {', '.join(after)} in {new_named} and {', '.join(before)} "
+                f"in {_named_directory(older)}"
+            )
+
+    layer.documentation = f"derived from {source_named} with {new_named}"
+    written = directory / f"{compose.MATERIAL}.usda"
+    if not layer.Export(str(written)):
+        raise PiperError(f"could not write {written}")
+    return UseTexturesResult(written, source, tuple(warnings))
+
+
+def _named_directory(version: Path) -> str:
+    """``tex v003``, from an installed version's directory."""
+    return f"{version.parent.name} {version.name}"
+
+
+def _map_of(name: str) -> str | None:
+    """``body_BaseColor`` from a file or template named as Painter names them; else None."""
+    matched = textures.NAMED.fullmatch(name)
+    return f"{matched.group('slot')}_{matched.group('map')}" if matched else None
+
+
+def _udims(directory: Path, map: str) -> list[str]:
+    """The tiles a map's PNGs hold in a tex version, as Painter numbered them."""
+    tiles = (textures.NAMED.fullmatch(png.name) for png in directory.glob(f"{map}.*.png"))
+    return sorted(tile.group("udim") for tile in tiles if tile)
+
+
 def _named(version: ProductVersion) -> str:
-    return f"{version.product} {layout.version_name(version.version)}"
+    return _named_number(version.product, version.version)
+
+
+def _named_number(product: str, number: int) -> str:
+    return f"{product} {layout.version_name(number)}"
 
 
 def _current_command(asset: Asset, version: int) -> str:
@@ -222,11 +460,7 @@ def publish_product(
     _check_exported(exported)
     copies = _installable_files(root, exported)
 
-    staging = product_root / f".tmp_{secrets.token_hex(4)}"
-    try:
-        staging.mkdir(parents=True)
-    except OSError as exc:
-        raise _refusal(exported, [f"{staging} could not be created ({exc.strerror})"]) from exc
+    staging = _staging(exported, product_root)
     try:
         _copy(exported.parent, copies, staging)
         if source is not None:
@@ -239,23 +473,9 @@ def publish_product(
     if problems:
         raise _refusal(exported, problems, _discard(staging))
 
-    try:
-        version = _install(exported, product_root, staging)
-    except OSError as exc:
-        # `_install` returns whenever the rename happened, so staging is not a version.
-        problem = f"{staging} could not be installed ({exc.strerror})"
-        raise _refusal(exported, [problem], _discard(staging)) from exc
+    version = _install(exported, product_root, staging)
     path = PurePosixPath(product_root, layout.version_name(version), exported.name)
-
-    try:
-        record_id = registry.register(asset, product=product, version=version, path=path)
-    except RegistryError as exc:
-        raise UnregisteredVersionError(
-            f"installed {path}, but could not register it: {exc}; "
-            "publishing again installs another version",
-            ProductVersion(asset, product, version, path, record_id=None),
-        ) from exc
-    return ProductVersion(asset, product, version, path, record_id)
+    return _register(registry, asset, product, version, path)
 
 
 def _product_root(root: PurePosixPath, asset: Asset, product: str) -> Path:
@@ -405,8 +625,27 @@ def _copy(export: Path, files: list[PurePosixPath], staging: Path) -> None:
         shutil.copyfile(export / relative, target)
 
 
+def _staging(exported: Path, product_root: Path) -> Path:
+    """Make the directory a version is assembled in, beside the versions."""
+    staging = product_root / f".tmp_{secrets.token_hex(4)}"
+    try:
+        staging.mkdir(parents=True)
+    except OSError as exc:
+        raise _refusal(exported, [f"{staging} could not be created ({exc.strerror})"]) from exc
+    return staging
+
+
 def _install(exported: Path, product_root: Path, staging: Path) -> int:
     """Rename staging onto the next free version number, and return the number."""
+    try:
+        return _rename_onto_next_version(exported, product_root, staging)
+    except OSError as exc:
+        # Returned whenever the rename happened, so staging is not a version.
+        problem = f"{staging} could not be installed ({exc.strerror})"
+        raise _refusal(exported, [problem], _discard(staging)) from exc
+
+
+def _rename_onto_next_version(exported: Path, product_root: Path, staging: Path) -> int:
     staged_inode = staging.stat().st_ino
     attempted = 0
     for _ in range(_INSTALL_ATTEMPTS):
@@ -432,6 +671,20 @@ def _install(exported: Path, product_root: Path, staging: Path) -> int:
         [f"other publishes took every version up to {layout.version_name(attempted)} first"],
         _discard(staging),
     )
+
+
+def _register(
+    registry: Registry, asset: Asset, product: str, version: int, path: PurePosixPath
+) -> ProductVersion:
+    try:
+        record_id = registry.register(asset, product=product, version=version, path=path)
+    except RegistryError as exc:
+        raise UnregisteredVersionError(
+            f"installed {path}, but could not register it: {exc}; "
+            "publishing again installs another version",
+            ProductVersion(asset, product, version, path, record_id=None),
+        ) from exc
+    return ProductVersion(asset, product, version, path, record_id)
 
 
 def _next_version(product_root: Path) -> int:

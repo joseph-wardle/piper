@@ -11,6 +11,13 @@ from piper_houdini import ui
 ui.show_open_work()
 ]]></scriptCode>
       </scriptItem>
+      <scriptItem id="piper_use_textures">
+        <label>Use Textures…</label>
+        <scriptCode><![CDATA[
+from piper_houdini import ui
+ui.show_use_textures()
+]]></scriptCode>
+      </scriptItem>
       <scriptItem id="piper_publish">
         <label>Publish…</label>
         <scriptCode><![CDATA[

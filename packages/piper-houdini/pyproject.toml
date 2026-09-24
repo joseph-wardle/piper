@@ -1,7 +1,7 @@
 [project]
 name = "piper-houdini"
 version = "0.1.0"
-description = "Piper inside Houdini: its menu, and opening and publishing an asset's work."
+description = "Piper inside Houdini: its menu, its material node, and opening and publishing an asset's work."
 requires-python = ">=3.11"
 license = "Apache-2.0"
 # Everything named here, and everything it needs, is importable inside Houdini:

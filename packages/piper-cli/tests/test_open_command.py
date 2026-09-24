@@ -78,7 +78,18 @@ def test_an_unknown_context_names_the_contexts_there_are(
     assert run(tracker, "open", "Frying Pan", "rigging") == 1
 
     assert capsys.readouterr().err == (
-        "piper: no asset context is named 'rigging' (contexts: modeling, lookdev)\n"
+        "piper: no asset context is named 'rigging' (contexts: modeling, lookdev, texturing)\n"
+    )
+    assert launches == []
+
+
+def test_texturing_work_is_refused_until_painter_can_be_launched(
+    run: Run, tracker: Tracker, launches: Launches, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert run(tracker, "open", "Frying Pan", "texturing") == 1
+
+    assert capsys.readouterr().err == (
+        "piper: texturing work is done in painter, which piper cannot launch yet\n"
     )
     assert launches == []
 

@@ -12,12 +12,11 @@ from piper.errors import PiperError
 from piper.find import find
 from piper.tracker import Asset, Tracker
 from piper_cli import render
-from piper_studio import launch, profile
+from piper_studio import launch, profile, textures
 from piper_studio.context import context_named
 from piper_studio.create import PartialCreateAssetError, UnknownFolderError, create_asset
 from piper_studio.production import Production
 from piper_studio.registry import registry_for
-from piper_studio.textures import convert, renderman_install
 from piper_studio.tracker import tracker_for
 from piper_studio.work import prepare_work
 
@@ -79,11 +78,15 @@ def open_command(asset: str, context: str, /) -> None:
     """
     production = _active_production()
     chosen = context_named(context, subject="asset")
+    launchers = {"maya": launch.maya, "houdini": launch.houdini}
+    if chosen.host not in launchers:
+        raise PiperError(
+            f"{chosen.name} work is done in {chosen.host}, which piper cannot launch yet"
+        )
     found = _asset_matching(tracker_for(production), asset)
     prepare_work(root=production.root, asset=found, context=chosen)
     print(f"Opening {chosen.name} work on {found.name!r}")
-    become = launch.maya if chosen.host == "maya" else launch.houdini
-    become(profile.active(), work=(found, chosen))
+    launchers[chosen.host](profile.active(), work=(found, chosen))
 
 
 @app.command(name="find")
@@ -156,25 +159,28 @@ def create_asset_command(
 def publish_command(
     asset: str,
     product: str,
-    layer: Path,
+    export: Path,
     /,
     *,
     pinned: Annotated[tuple[str, ...], Parameter(name="--with")] = (),
     as_json: Annotated[bool, Parameter(name="--json")] = False,
 ) -> None:
-    """Publish a component: install the layer, build the asset version pinning it, make it current.
+    """Publish a component: install the export, build the asset version pinning it, make it current.
 
     The asset version pins what the current one pins, with this component
-    replaced. A component nothing pins is left out.
+    replaced. A component nothing pins is left out. Publishing tex installs the
+    directory Painter exported, with a RenderMan texture converted beside each
+    PNG, then derives the current material to read it and publishes that as
+    the next mtl.
 
     Parameters
     ----------
     asset
         The asset's name, spelled exactly as the tracker spells it.
     product
-        What the layer holds, such as geo or mtl. The layer is named for it.
-    layer
-        The exported USD layer.
+        What the export holds, such as geo, mtl, or tex. A layer is named for it.
+    export
+        The exported USD layer, or for tex the directory Painter exported into.
     pinned
         Another component's version to pin instead of the current one's, as geo=5.
     as_json
@@ -183,14 +189,23 @@ def publish_command(
     # Imported here: loading USD takes most of a second, and no other command needs it.
     from piper_studio.publish import PartialPublishError, publish
 
+    if product == textures.PRODUCT and pinned:
+        raise PiperError(
+            f"cannot pin with --with while publishing {product}: the material is derived "
+            "from the current asset version's"
+        )
     production = _active_production()
+    found = _asset_named(tracker_for(production), asset)
+    if product == textures.PRODUCT:
+        _publish_textures(production, found, export, as_json)
+        return
     try:
         result = publish(
             registry_for(production),
             root=production.root,
-            asset=_asset_named(tracker_for(production), asset),
+            asset=found,
             product=product,
-            layer=PurePosixPath(layer),
+            layer=PurePosixPath(export),
             with_versions=_with_versions(pinned),
         )
     except PartialPublishError as exc:
@@ -201,6 +216,27 @@ def publish_command(
         render.publish_result_as_json(result)
     else:
         render.publish_result_as_text(result)
+
+
+def _publish_textures(production: Production, asset: Asset, export: Path, as_json: bool) -> None:
+    from piper_studio.publish import PartialPublishTexturesError, publish_textures
+
+    try:
+        result = publish_textures(
+            registry_for(production),
+            root=production.root,
+            asset=asset,
+            export=PurePosixPath(export),
+            renderman=textures.renderman_install(),
+        )
+    except PartialPublishTexturesError as exc:
+        if as_json:
+            render.publish_textures_result_as_json(exc.result, error=str(exc))
+        raise
+    if as_json:
+        render.publish_textures_result_as_json(result)
+    else:
+        render.publish_textures_result_as_text(result)
 
 
 @app.command(name="convert")
@@ -214,8 +250,8 @@ def convert_command(directory: Path, /) -> None:
     directory
         Where Painter exported, with each PNG named <slot>_<map>.<udim>.png.
     """
-    textures = convert(directory, renderman=renderman_install())
-    print(f"Converted {len(textures)} textures in {directory}")
+    converted = textures.convert(directory, renderman=textures.renderman_install())
+    print(f"Converted {len(converted)} textures in {directory}")
 
 
 @app.command(name="current")

@@ -10,9 +10,10 @@ import hou
 
 from piper.errors import PiperError
 from piper.tracker import Asset, Tracker
-from piper_houdini.publish import publish_work, save_layer, scene_asset, scene_pin, slots, surfaces
+from piper_houdini import material
+from piper_houdini.publish import publish_work, save_layer, scene_asset, scene_pin, surfaces
 from piper_houdini.work import PRODUCT, open_work
-from piper_studio import compose, profile
+from piper_studio import compose, profile, textures
 from piper_studio.context import CONTEXTS, context_named
 from piper_studio.layout import version_name
 from piper_studio.production import Production
@@ -69,6 +70,48 @@ def show_open_work() -> None:
 
 
 @refusals_shown
+def show_use_textures() -> None:
+    """Point the scene's Piper Material at a tex version the artist picks."""
+    production, tracker = _production_and_tracker()
+    root = production.root
+    asset = scene_asset(tracker, production)
+    generator = _generator()
+    versions = compose.versions(root, asset, textures.PRODUCT)
+    if not versions:
+        raise PiperError(
+            f"no {textures.PRODUCT} is published for {asset.name}; "
+            f"`piper publish {asset.name!r} {textures.PRODUCT} <export>` installs one"
+        )
+    rows = [f"{version_name(n)}{'    (newest)' if n == versions[-1] else ''}" for n in versions]
+    chosen = hou.ui.selectFromList(
+        rows,
+        default_choices=[len(versions) - 1],
+        exclusive=True,
+        title=f"Use Textures — {asset.name}",
+        message=f"Point {generator.path()} at",
+        column_header=textures.PRODUCT,
+        width=380,
+        height=440,
+    )
+    if not chosen:
+        return
+    version = versions[chosen[0]]
+    generator.parm("textures").set(str(material.textures_path(root, asset, version)))
+    lines = [
+        f"{generator.path()} reads {textures.PRODUCT} {version_name(version)}.",
+        *material.missing_lines(material.missing_textures(generator)),
+        "Add Materials adds a material for a texture set that has none.",
+    ]
+    hou.ui.displayMessage("\n".join(lines), title="Piper")
+
+
+@refusals_shown
+def add_materials(generator: hou.Node) -> None:
+    """Add Materials from the node's button, saying what it added and what is not there."""
+    hou.ui.displayMessage(material.added_line(material.add_materials(generator)), title="Piper")
+
+
+@refusals_shown
 def show_publish() -> None:
     """Show what the scene would publish, and publish it when the artist agrees."""
     production, tracker = _production_and_tracker()
@@ -76,7 +119,7 @@ def show_publish() -> None:
     asset = scene_asset(tracker, production)
     loaded, parm = scene_pin(root, asset)
     now, pins = compose.current_pins(root, asset)
-    named = slots(root, asset, pins)
+    named = compose.slots(root, asset, pins)
     # Read before the temporary ROP, in case Houdini counts it as a change.
     unsaved = hou.hipFile.hasUnsavedChanges()
     buttons = ["Save and Publish", "Publish Without Saving"] if unsaved else ["Publish"]
@@ -116,7 +159,7 @@ def show_publish() -> None:
             with_versions=with_versions,
         )
     hou.ui.displayMessage(
-        f"{published_line(result)}\n\n{result.component.path}\n\n{composition_line(result)}",
+        f"{published_line(result.component)}\n\n{result.component.path}\n\n{composition_line(result)}",
         title="Piper",
     )
 
@@ -165,16 +208,39 @@ def publish_window(
 
 
 def _warn_stale(root: PurePosixPath, asset: Asset) -> None:
-    """Say what the open scene loads when that is not what is current."""
+    """Say what the open scene loads and reads when newer versions exist."""
     try:
         loaded, parm = scene_pin(root, asset)
         pinned = compose.pins(root, asset, loaded)
     except PiperError:
         return
     now, pins = compose.current_pins(root, asset)
+    lines = []
     if now != loaded:
-        lines = [_loads_line(loaded, pinned, parm, now), compose.current_line(now, pins)]
+        lines += [_loads_line(loaded, pinned, parm, now), compose.current_line(now, pins)]
+    installed = compose.versions(root, asset, textures.PRODUCT)
+    for reading, version in material.scene_textures(root, asset):
+        if installed and version < installed[-1]:
+            lines.append(
+                f"This scene reads {textures.PRODUCT} {version_name(version)} ({reading}); "
+                f"the newest is {textures.PRODUCT} {version_name(installed[-1])}."
+            )
+    if lines:
         hou.ui.displayMessage("\n".join(lines), title="Piper")
+
+
+def _generator() -> hou.Node:
+    """The one Piper Material node of the open scene."""
+    found = material.instances()
+    if len(found) == 1:
+        return found[0]
+    if found:
+        listed = ", ".join(node.path() for node in found)
+        raise PiperError(f"this scene has {len(found)} Piper Material nodes ({listed}); keep one")
+    raise PiperError(
+        "this scene has no Piper Material node; Open Work… starts a network with one, "
+        "or add one inside the Material Library"
+    )
 
 
 def _loads_line(loaded: int, pinned: Mapping[str, int], parm: str, now: int | None) -> str:

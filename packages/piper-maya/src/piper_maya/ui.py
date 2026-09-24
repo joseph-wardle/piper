@@ -155,7 +155,7 @@ def show_publish() -> None:
         cmds.waitCursor(state=False)
     cmds.confirmDialog(
         title="Piper",
-        message=f"{published_line(result)}\n\n{result.component.path}\n\n{composition_line(result)}",
+        message=f"{published_line(result.component)}\n\n{result.component.path}\n\n{composition_line(result)}",
         button=["OK"],
     )
 

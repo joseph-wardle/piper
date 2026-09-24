@@ -14,7 +14,8 @@ class Registry(Protocol):
     def register(self, asset: Asset, *, product: str, version: int, path: PurePosixPath) -> str:
         """Record an installed version and return the record's opaque id.
 
-        ``path`` is the version's root layer. Refuses a version already
-        recorded for the same asset and product.
+        ``path`` is the version's root layer, or the version's directory for a
+        product with none. Refuses a version already recorded for the same
+        asset and product.
         """
         ...

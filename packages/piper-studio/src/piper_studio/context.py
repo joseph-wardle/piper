@@ -22,6 +22,7 @@ class Context:
 CONTEXTS = (
     Context(name="modeling", subject="asset", host="maya", extension="mb"),
     Context(name="lookdev", subject="asset", host="houdini", extension="hipnc"),
+    Context(name="texturing", subject="asset", host="painter", extension="spp"),
 )
 
 

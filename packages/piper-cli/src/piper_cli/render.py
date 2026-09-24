@@ -16,7 +16,7 @@ from piper_studio.production import PRODUCTION_ENV
 from piper_studio.profile import Profile
 
 if TYPE_CHECKING:
-    from piper_studio.publish import ProductVersion, PublishResult
+    from piper_studio.publish import ProductVersion, PublishResult, PublishTexturesResult
 
 _MISSING = "—"
 
@@ -80,13 +80,8 @@ def create_asset_result_as_text(result: CreateAssetResult) -> None:
 
 def publish_result_as_json(result: "PublishResult", error: str | None = None) -> None:
     """Write what a publish left to stdout as one JSON object."""
-    payload: dict[str, object] = {
-        "asset": _asset_json(result.component.asset),
-        "component": _version_json(result.component),
-        "asset_version": _version_json(result.asset_version) if result.asset_version else None,
-        "pins": dict(result.pins),
-        "current": result.current,
-    }
+    payload: dict[str, object] = {"asset": _asset_json(result.component.asset)}
+    payload.update(_composition_json(result))
     if error is not None:
         payload["error"] = error
     print(json.dumps(payload))
@@ -96,11 +91,51 @@ def publish_result_as_text(result: "PublishResult") -> None:
     """Write which versions a publish installed, their root layers, and what is current."""
     from piper_studio.publish import composition_line, published_line
 
-    print(published_line(result))
+    print(published_line(result.component))
     print(result.component.path)
     print(composition_line(result))
     if result.asset_version is not None:
         print(result.asset_version.path)
+
+
+def publish_textures_result_as_json(
+    result: "PublishTexturesResult", error: str | None = None
+) -> None:
+    """Write what a texture publish left to stdout as one JSON object."""
+    payload: dict[str, object] = {
+        "asset": _asset_json(result.textures.asset),
+        "textures": _version_json(result.textures),
+        "material": _composition_json(result.material) if result.material else None,
+        "derived_from": result.derived_from,
+        "warnings": list(result.warnings),
+    }
+    if error is not None:
+        payload["error"] = error
+    print(json.dumps(payload))
+
+
+def publish_textures_result_as_text(result: "PublishTexturesResult") -> None:
+    """Write which textures were installed, which material now reads them, and what to know."""
+    from piper_studio.publish import composition_line, derived_line, published_line
+
+    print(published_line(result.textures))
+    print(result.textures.path)
+    if result.material is not None and result.derived_from is not None:
+        print(derived_line(result.material.component, result.derived_from))
+        print(composition_line(result.material))
+        if result.material.asset_version is not None:
+            print(result.material.asset_version.path)
+    for warning in result.warnings:
+        print(warning)
+
+
+def _composition_json(result: "PublishResult") -> dict[str, object]:
+    return {
+        "component": _version_json(result.component),
+        "asset_version": _version_json(result.asset_version) if result.asset_version else None,
+        "pins": dict(result.pins),
+        "current": result.current,
+    }
 
 
 def current_as_json(asset: Asset, version: int | None, pins: Mapping[str, int]) -> None:

@@ -51,15 +51,6 @@ def scene_pin(root: PurePosixPath, asset: Asset) -> tuple[int, str]:
     return number, parm
 
 
-def slots(root: PurePosixPath, asset: Asset, pins: Mapping[str, int]) -> list[str]:
-    """The material slots of the geo version ``pins`` names, in the order the geo declares them."""
-    if _GEOMETRY not in pins:
-        return []
-    geo = root / compose.layer_path(root, asset, _GEOMETRY, pins[_GEOMETRY])
-    layer = Sdf.Layer.OpenAsAnonymous(str(geo))
-    return [spec.name for spec in _children(layer, f"/{asset.pipe_name}/{PRODUCT}")]
-
-
 def save_layer(directory: Path, asset: Asset, slot_names: list[str]) -> Path:
     """Save the layer ``OUT_mtl`` holds into ``directory``, refusing one filling other slots."""
     output = hou.node(OUTPUT)

@@ -1,0 +1,28 @@
+{
+    name	piper::material
+    script	piper::material
+    label	"Piper Material"
+
+    help {
+	"A material for RenderMan and the viewport per texture set, reading the textures in one directory."
+	""
+	"Put it in a Material Library. Add Materials adds a material named for each texture set in the directory that has none, and never touches one that exists. Every texture path is an expression off the directory, so pointing it at another version retargets every material."
+    }
+
+    parm {
+        name    "textures"
+        label   "Textures"
+        type    directory
+        default { "" }
+        help    "A tex version spelled from the production root, or any directory of converted textures."
+    }
+    parm {
+        name    "add_materials"
+        label   "Add Materials"
+        type    button
+        default { "0" }
+        help    "Add a material for each texture set that has none, and say what the materials read that is not there."
+        parmtag { "script_callback" "from piper_houdini import ui; ui.add_materials(kwargs['node'])" }
+        parmtag { "script_callback_language" "python" }
+    }
+}

@@ -13,6 +13,8 @@ from piper_studio import layout
 from piper_studio.storage import asset_directory
 
 ASSET = "asset"
+GEOMETRY = "geo"
+MATERIAL = "mtl"
 _PAYLOAD = "payload.usda"
 _STAGE_METADATA = ("upAxis", "metersPerUnit")
 
@@ -116,6 +118,17 @@ def layer_path(root: PurePosixPath, asset: Asset, product: str, version: int) ->
     if not candidates:
         raise _no_version(root, asset, product, version)
     return PurePosixPath(candidates[0].relative_to(Path(root)))
+
+
+def slots(root: PurePosixPath, asset: Asset, pins: Mapping[str, int]) -> list[str]:
+    """The material slots of the geo version ``pins`` names, in the order the geo declares them."""
+    if GEOMETRY not in pins:
+        return []
+    geo = root / layer_path(root, asset, GEOMETRY, pins[GEOMETRY])
+    # The layer is held until the names are copied out: its specs die with it.
+    layer = Sdf.Layer.OpenAsAnonymous(str(geo))
+    materials = layer.GetPrimAtPath(f"/{asset.pipe_name}/{MATERIAL}") if layer else None
+    return [spec.name for spec in materials.nameChildren] if materials else []
 
 
 def current(root: PurePosixPath, asset: Asset) -> int | None:

@@ -7,18 +7,26 @@ from pathlib import Path
 
 from piper.errors import PiperError
 
+PRODUCT = "tex"
+TEXTURE = ".tex"
+PREVIEW = ".jpg"
 RENDERMAN_VERSION = "27.3"
 
-# Painted in sRGB;
+# Painted in sRGB and rendered in ACEScg, so the texture is converted and kept in half.
 COLOUR_MAPS = ("BaseColor", "Emissive")
+# Numbers, not colours; kept at the depth Painter exported.
 DATA_MAPS = ("Metallic", "SpecularRoughness", "Normal", "Displacement", "Presence")
 MAPS = (*COLOUR_MAPS, *DATA_MAPS)
 
-_EXPORTED = re.compile(r"(?P<slot>.+)_(?P<map>[A-Za-z]+)\.(?P<udim>\d{4})\.png")
+# How Piper's Painter export names a file, and how a material names the tiles of a map.
+UDIM = "<UDIM>"
+NAMED = re.compile(
+    rf"(?P<slot>.+)_(?P<map>[A-Za-z]+)\.(?P<udim>\d{{4}}|{UDIM})\.(?P<extension>\w+)"
+)
 
 
-def convert(directory: Path, *, renderman: Path) -> list[Path]:
-    """Write a RenderMan texture beside every exported PNG in ``directory``."""
+def convert(directory: Path, *, renderman: Path, into: Path | None = None) -> list[Path]:
+    """Write a RenderMan texture for every exported PNG in ``directory``; return the textures."""
     if not directory.is_dir():
         raise PiperError(f"cannot convert {directory}: it is not a directory")
     exported = sorted(directory.glob("*.png"))
@@ -31,12 +39,13 @@ def convert(directory: Path, *, renderman: Path) -> list[Path]:
             f"cannot convert {directory}: RenderMan {RENDERMAN_VERSION} is not installed at "
             f"{renderman}; set RMANTREE to where it is"
         )
+    into = directory if into is None else into
     for png in exported:
-        png.with_suffix(".tex").unlink(missing_ok=True)
+        (into / png.name).with_suffix(TEXTURE).unlink(missing_ok=True)
 
     textures: list[Path] = []
     for png, name in maps.items():
-        texture = png.with_suffix(".tex")
+        texture = (into / png.name).with_suffix(TEXTURE)
         command = _command(png, texture, colour=name in COLOUR_MAPS, renderman=renderman)
         ran = subprocess.run(command, capture_output=True, text=True, check=False)
         # A truncated PNG makes oiiotool complain on stderr, write a texture, and exit 0.
@@ -47,6 +56,13 @@ def convert(directory: Path, *, renderman: Path) -> list[Path]:
     return textures
 
 
+def tiles(directory: Path, name: str) -> list[Path]:
+    """The files ``name`` stands for in ``directory``: its tiles, or itself."""
+    if UDIM in name:
+        return sorted(directory.glob(name.replace(UDIM, "[0-9]" * 4)))
+    return [directory / name] if (directory / name).is_file() else []
+
+
 def renderman_install() -> Path:
     """Where RenderMan is installed on this machine: ``RMANTREE``, or its usual place."""
     located = os.environ.get("RMANTREE")
@@ -54,7 +70,7 @@ def renderman_install() -> Path:
 
 
 def _map_name(png: Path) -> str:
-    matched = _EXPORTED.fullmatch(png.name)
+    matched = NAMED.fullmatch(png.name)
     if matched is None:
         raise PiperError(
             f"cannot convert {png}: a texture is named <slot>_<map>.<udim>.png, "

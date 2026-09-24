@@ -6,7 +6,8 @@ import hou
 
 from piper.errors import PiperError
 from piper.tracker import Asset, Tracker
-from piper_studio import compose
+from piper_houdini import material
+from piper_studio import compose, textures
 from piper_studio.context import Context
 from piper_studio.production import Production
 from piper_studio.storage import asset_directory
@@ -69,9 +70,10 @@ def open_work(
 
 
 def build_starter(root: PurePosixPath, asset: Asset, version: int) -> None:
-    """The network lookdev starts from."""
+    """The network lookdev starts from, with a material per texture set of the newest tex."""
     pipe_name = asset_directory(root, asset).name
     entry = PurePosixPath(compose.entry_path(root, asset, version)).relative_to(root)
+    installed = compose.versions(root, asset, textures.PRODUCT)
     stage = hou.node(STAGE)
     loaded = stage.createNode("sublayer", compose.ASSET)
     loaded.parm("filepath1").set(str(entry))
@@ -83,6 +85,10 @@ def build_starter(root: PurePosixPath, asset: Asset, version: int) -> None:
     materials.parm("matnode1").set("*")
     materials.parm("matflag1").set(1)
     materials.parm("assign1").set(0)
+    generator = materials.createNode(material.TYPE, material.NAME)
+    if installed:
+        generator.parm("textures").set(str(material.textures_path(root, asset, installed[-1])))
+        material.add_materials(generator)
     output = stage.createNode("null", OUTPUT_NAME)
     output.setInput(0, materials)
     dome = stage.createNode("domelight::3.0", "view_dome")
