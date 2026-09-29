@@ -1,9 +1,10 @@
-"""What Piper adds to Painter's interface: its menu items, and what opens and publishes work."""
+"""What Piper adds to Painter's interface: its menu items, and the work they do."""
 
+import contextlib
 import functools
 import os
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import ParamSpec
 
@@ -21,7 +22,7 @@ from piper_painter.publish import (
     scene_file,
     texture_sets,
 )
-from piper_painter.work import open_work
+from piper_painter.work import open_file, open_work
 from piper_studio import profile, textures
 from piper_studio.context import CONTEXTS, context_named
 from piper_studio.launch import OPEN_ENV
@@ -47,7 +48,11 @@ def refusals_shown(action: Callable[_P, None]) -> Callable[_P, None]:
 
 def start() -> None:
     """Add Piper's items to the File menu, then open the work the launch named, if it named any."""
-    for label, act in (("Piper: Open Work…", show_open_work), ("Piper: Publish…", show_publish)):
+    for label, act in (
+        ("Piper: Open Work…", show_open_work),
+        ("Piper: Publish…", show_publish),
+        ("Piper: Export Textures…", show_export),
+    ):
         action = QtGui.QAction(label, painter_ui.get_main_window())
         action.triggered.connect(functools.partial(_run, act))
         painter_ui.add_action(painter_ui.ApplicationMenu.File, action)
@@ -127,16 +132,52 @@ def show_publish() -> None:
             f"Painter could not save the project ({exc}), so nothing was published"
         ) from exc
     scene = scene_file()
+    with (
+        _waiting(),
+        tempfile.TemporaryDirectory(
+            prefix="piper_export_", ignore_cleanup_errors=True
+        ) as directory,
+    ):
+        warnings = export_textures(Path(directory), sets)
+        said = publish_work(asset, Path(directory), scene)
+    _show("\n\n".join([said, *warnings]))
+
+
+@refusals_shown
+def show_export() -> None:
+    """Export every map of every set into a folder the artist picks, with RenderMan textures.
+
+    Needs no production: a class project exports as a production's publish does.
+    """
+    if not project.is_open():
+        raise PiperError("no project is open")
+    saved = open_file()
+    chosen = QtWidgets.QFileDialog.getExistingDirectory(
+        painter_ui.get_main_window(), "Export Textures", str(saved.parent) if saved else ""
+    )
+    if not chosen:
+        return
+    directory = Path(chosen)
+    with _waiting():
+        warnings = export_textures(directory, texture_sets())
+        try:
+            converted = textures.convert(directory, renderman=textures.renderman_install())
+        except PiperError as refusal:
+            # The PNGs are written by now; alone, the refusal would read as if nothing was.
+            said = f"The textures were exported into {directory} but not converted: {refusal}"
+            raise PiperError("\n\n".join([said, *warnings])) from refusal
+    said = f"Exported and converted {len(converted)} textures into {directory}."
+    _show("\n\n".join([said, *warnings]))
+
+
+@contextlib.contextmanager
+def _waiting() -> Iterator[None]:
+    """Painter's wait cursor, for work that holds Painter for minutes."""
     QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
     try:
-        with tempfile.TemporaryDirectory(
-            prefix="piper_export_", ignore_cleanup_errors=True
-        ) as directory:
-            warnings = export_textures(Path(directory), sets)
-            said = publish_work(asset, Path(directory), scene)
+        yield
     finally:
         QtWidgets.QApplication.restoreOverrideCursor()
-    _show("\n\n".join([said, *warnings]))
 
 
 def _leaving_open_project() -> bool:
