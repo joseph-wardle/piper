@@ -1,5 +1,6 @@
+import sys
 from collections.abc import Callable
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath
 
 import pytest
 
@@ -33,7 +34,7 @@ def create(
 ) -> CreateAssetResult:
     return create_asset(
         tracker,
-        root=PurePosixPath(root),
+        root=PurePath(root),
         types=TYPES,
         name=name,
         type=type,
@@ -48,7 +49,7 @@ def test_creates_the_asset_and_its_directory_named_by_slugs(tracker: Tracker, ro
     assert tracker.find_assets("Toaster") == (result.asset,)
     assert (result.asset.type, result.asset.folder) == ("Prop", "kitchen")
     assert result.asset.pipe_name == "mr_yoons_toaster"
-    assert result.directory == PurePosixPath(root, "asset", "kitchen", "mr_yoons_toaster")
+    assert result.directory == PurePath(root, "asset", "kitchen", "mr_yoons_toaster")
     assert Path(result.directory).is_dir()
     assert (result.asset_created, result.directory_created) == (True, True)
 
@@ -104,11 +105,17 @@ def test_a_name_whose_pipe_name_would_start_with_a_digit_is_refused(
     assert not (root / "asset").exists()
 
 
+# Windows ignores a directory's mode, so chmod cannot make one unwritable there.
+unwritable = pytest.mark.skipif(
+    sys.platform == "win32", reason="chmod cannot make a directory unwritable on Windows"
+)
+
+
 @pytest.mark.parametrize(
     "make_unusable",
     [
         pytest.param(Path.rmdir, id="missing"),
-        pytest.param(lambda root: root.chmod(0o500), id="unwritable"),
+        pytest.param(lambda root: root.chmod(0o500), id="unwritable", marks=unwritable),
     ],
 )
 def test_a_root_the_artist_cannot_write_is_refused_before_the_tracker_changes(
@@ -177,7 +184,7 @@ def test_a_renamed_asset_keeps_the_paths_its_pipe_name_gave_it(
 ) -> None:
     renamed_toaster(tracker, root)
 
-    with pytest.raises(PiperError, match=r"already exists at .*/kitchen/toaster$"):
+    with pytest.raises(PiperError, match=r"already exists at .*[/\\]kitchen[/\\]toaster$"):
         create(tracker, root, "Bread Toaster")
 
 
@@ -216,6 +223,7 @@ def test_a_tracker_failure_leaves_storage_untouched(
     assert not (root / "asset").exists()
 
 
+@unwritable
 def test_a_storage_failure_reports_what_was_and_was_not_created(
     tracker: Tracker, root: Path
 ) -> None:

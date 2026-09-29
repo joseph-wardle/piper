@@ -2,9 +2,10 @@ import errno
 import os
 import re
 import shutil
+import sys
 import textwrap
 from collections.abc import Callable
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 
 import pytest
 from pxr import Ar, Sdf, Usd, Vt
@@ -59,6 +60,19 @@ MTL = """
     }
 """
 
+# A model reading one texture, spelled as the test needs.
+TEXTURED = """
+    #usda 1.0
+    (
+        defaultPrim = "pan"
+    )
+
+    def Xform "pan"
+    {{
+        asset texture = @{texture}@
+    }}
+"""
+
 # Pins geo v001 the way every pin is spelled: from the production root.
 ENTRY = """
     #usda 1.0
@@ -85,6 +99,16 @@ def export(tmp_path: Path) -> Path:
     return tmp_path / "export"
 
 
+# Windows ignores a directory's mode, so chmod cannot make one unwritable there.
+unwritable = pytest.mark.skipif(
+    sys.platform == "win32", reason="chmod cannot make a directory unwritable on Windows"
+)
+# A symlink needs a privilege Windows does not give by default.
+symlinks = pytest.mark.skipif(
+    sys.platform == "win32", reason="making a symlink needs a privilege on Windows"
+)
+
+
 def write(path: Path, text: str = "") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(textwrap.dedent(text).lstrip(), encoding="utf-8")
@@ -102,7 +126,7 @@ def run(
 ) -> ProductVersion:
     return publish_product(
         registry,
-        root=PurePosixPath(root),
+        root=PurePath(root),
         asset=asset,
         product=product,
         layer=layer,
@@ -145,22 +169,35 @@ def test_installs_the_layer_and_what_it_depends_on_as_the_first_version(
         """,
     )
     write(export / "tex" / "wood.1001.png")
-    # A link into a mutable library must install as the file it names.
-    (export / "tex" / "wood.1002.png").symlink_to(write(tmp_path / "library" / "wood.png"))
+    write(export / "tex" / "wood.1002.png")
     write(export / "notes.txt")
 
     result = run(registry, root, export / "geo.usda")
 
     version = products(root) / "v001"
     assert (result.version, result.path) == (1, version / "geo.usda")
-    installed = {str(path.relative_to(version)) for path in version.rglob("*") if path.is_file()}
+    installed = {
+        path.relative_to(version).as_posix() for path in version.rglob("*") if path.is_file()
+    }
     assert installed == {"geo.usda", "looks/wood.usda", "tex/wood.1001.png", "tex/wood.1002.png"}
-    assert not any(path.is_symlink() for path in version.rglob("*"))
     # Registered as every recorded path is spelled: from the root.
     spelled = PurePosixPath("asset/kitchen/frying_pan/publish/geo/v001/geo.usda")
     assert registrations == [(PAN, "geo", 1, spelled)]
     assert result.record_id is not None
     assert [path.name for path in products(root).iterdir()] == ["v001"]
+
+
+@symlinks
+def test_a_link_into_a_mutable_library_installs_as_the_file_it_names(
+    registry: Registry, root: Path, export: Path, tmp_path: Path
+) -> None:
+    write(export / "geo.usda", TEXTURED.format(texture="./wood.png"))
+    (export / "wood.png").symlink_to(write(tmp_path / "library" / "wood.png", "grain"))
+
+    version = Path(run(registry, root, export / "geo.usda").path).parent
+
+    assert not (version / "wood.png").is_symlink()
+    assert (version / "wood.png").read_text(encoding="utf-8") == "grain"
 
 
 def test_the_next_version_follows_the_highest_numbered_version_directory(
@@ -238,11 +275,13 @@ def test_a_request_that_cannot_be_published_changes_nothing(
         pytest.param("./missing.usda", "missing.usda does not resolve", id="unresolved"),
         pytest.param(
             "../elsewhere/part.usda",
-            "elsewhere/part.usda is outside",
+            f"{Path('elsewhere', 'part.usda')} is outside",
             id="outside-the-export",
         ),
         pytest.param(
-            "./src/part.usda", "src/part.usda is under src/, which a version reserves", id="src"
+            "./src/part.usda",
+            f"{Path('src', 'part.usda')} is under src/, which a version reserves",
+            id="src",
         ),
     ],
 )
@@ -330,13 +369,29 @@ def test_an_absolute_path_is_refused_from_the_staged_copy_and_staging_is_removed
         ENTRY.replace("asset/kitchen/frying_pan/publish/geo", str(geo.parent.parent)),
     )
 
+    # Echoed as authored: the directory as this machine spells it, then the POSIX tail.
+    spelled = f"{geo.parent.parent}/v001/geo.usda"
     with pytest.raises(
-        PiperError, match=f"entry.usda spells @{re.escape(str(geo))}@ as an absolute"
+        PiperError, match=f"entry.usda spells @{re.escape(spelled)}@ as an absolute"
     ):
         run(registry, root, export / "entry.usda", product="entry")
 
     assert list(products(root, "entry").iterdir()) == []
     assert len(registrations) == 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows reads C: as a drive, never a folder")
+def test_a_drive_spelling_is_refused_though_it_resolves_beside_the_layer_here(
+    registry: Registry, root: Path, export: Path
+) -> None:
+    # On Linux a folder may be named C:, and the layer resolves; Windows would read drive C.
+    write(export / "C:" / "wood.png")
+    write(export / "geo.usda", TEXTURED.format(texture="C:/wood.png"))
+
+    with pytest.raises(PiperError, match=r"geo\.usda spells @C:/wood\.png@ as an absolute path"):
+        run(registry, root, export / "geo.usda")
+
+    assert list(products(root).iterdir()) == []
 
 
 def crate_without_default_prim(path: Path) -> None:
@@ -452,7 +507,9 @@ def test_the_work_file_a_layer_came_from_is_kept_in_the_versions_src(
     result = run(registry, root, export / "geo.usda", source=work)
 
     version = Path(result.path).parent
-    installed = {str(path.relative_to(version)) for path in version.rglob("*") if path.is_file()}
+    installed = {
+        path.relative_to(version).as_posix() for path in version.rglob("*") if path.is_file()
+    }
     assert installed == {"geo.usda", "src/frying_pan.mb"}
     assert (version / "src" / "frying_pan.mb").read_bytes() == work.read_bytes()
 
@@ -607,7 +664,7 @@ def publish_run(
 ) -> PublishResult:
     return publish(
         registry,
-        root=PurePosixPath(root),
+        root=PurePath(root),
         asset=PAN,
         product=product,
         layer=layer,
@@ -637,7 +694,7 @@ def test_a_first_publish_pins_itself_alone_and_is_current(
         ("geo", 1),
         ("asset", 1),
     ]
-    assert current(PurePosixPath(root), PAN) == 1
+    assert current(PurePath(root), PAN) == 1
     assert composition_line(result) == "asset v001 pins geo v001, and is current"
     stage = composed(root, 1)
     assert stage.GetCompositionErrors() == [] and stage.GetPrimAtPath("/frying_pan/body")
@@ -653,7 +710,7 @@ def test_a_publish_replaces_only_its_own_pin(registry: Registry, root: Path, exp
 
     assert dict(with_material.pins) == {"geo": 1, "mtl": 1}
     assert dict(new_geometry.pins) == {"geo": 2, "mtl": 1}
-    assert current(PurePosixPath(root), PAN) == 3
+    assert current(PurePath(root), PAN) == 3
     assert (
         composition_line(with_material) == "asset v002 pins geo v001 and mtl v001, and is current"
     )
@@ -673,28 +730,28 @@ def test_the_next_publish_builds_on_whatever_is_current(
     publish_run(registry, root, export / "geo.usda")
     publish_run(registry, root, export / "mtl.usda", product="mtl")
     publish_run(registry, root, export / "geo.usda")
-    make_current(PurePosixPath(root), PAN, 2)
+    make_current(PurePath(root), PAN, 2)
 
     result = publish_run(registry, root, export / "mtl.usda", product="mtl")
 
     assert dict(result.pins) == {"geo": 1, "mtl": 2}
     assert result.asset_version is not None and result.asset_version.version == 4
-    assert current(PurePosixPath(root), PAN) == 4
+    assert current(PurePath(root), PAN) == 4
 
 
 def test_a_dialog_says_what_is_current_and_offers_the_other_components_versions(
     root: Path,
 ) -> None:
     assert current_line(None, {}) == "Nothing is current."
-    assert other_versions(PurePosixPath(root), PAN, {}, "geo") == {}
+    assert other_versions(PurePath(root), PAN, {}, "geo") == {}
 
     for product, version in (("geo", 1), ("geo", 2), ("mtl", 1)):
         write(products(root, product) / f"v{version:03d}" / f"{product}.usda", GEO)
     pins = {"geo": 1, "mtl": 1}
 
     assert current_line(2, pins) == "Current is asset v002, pinning geo v001, mtl v001."
-    assert other_versions(PurePosixPath(root), PAN, pins, "geo") == {"mtl": ([1], 1)}
-    assert other_versions(PurePosixPath(root), PAN, pins, "mtl") == {"geo": ([1, 2], 1)}
+    assert other_versions(PurePath(root), PAN, pins, "geo") == {"mtl": ([1], 1)}
+    assert other_versions(PurePath(root), PAN, pins, "mtl") == {"geo": ([1, 2], 1)}
 
 
 def test_a_named_version_pins_instead_of_currents_for_one_publish(
@@ -704,7 +761,7 @@ def test_a_named_version_pins_instead_of_currents_for_one_publish(
     write(export / "mtl.usda", MTL)
     publish_run(registry, root, export / "geo.usda")
     publish_run(registry, root, export / "geo.usda")
-    make_current(PurePosixPath(root), PAN, 1)
+    make_current(PurePath(root), PAN, 1)
 
     result = publish_run(
         registry, root, export / "mtl.usda", product="mtl", with_versions={"geo": 2}
@@ -775,7 +832,7 @@ def test_a_component_that_did_not_register_builds_no_asset_version(
         "publishing again installs another version; no asset version was built"
     )
     assert not products(root, "asset").exists()
-    assert current(PurePosixPath(root), PAN) is None
+    assert current(PurePath(root), PAN) is None
 
 
 def test_an_asset_version_that_did_not_register_is_installed_and_not_current(
@@ -797,10 +854,11 @@ def test_an_asset_version_that_did_not_register_is_installed_and_not_current(
     )
     assert "published geo v002; installed" in str(raised.value)
     assert str(raised.value).endswith("`piper current 'Frying Pan' 2` makes it current")
-    assert current(PurePosixPath(root), PAN) == 1
+    assert current(PurePath(root), PAN) == 1
     assert composition_line(result) == "asset v002 pins geo v002, and is not current"
 
 
+@unwritable
 def test_an_asset_version_that_cannot_be_installed_leaves_the_component_published(
     registry: Registry, registrations: Registrations, root: Path, export: Path
 ) -> None:
@@ -820,7 +878,7 @@ def test_an_asset_version_that_cannot_be_installed_leaves_the_component_publishe
         raised.value
     )
     assert [product for _, product, _, _ in registrations] == ["geo"]
-    assert current(PurePosixPath(root), PAN) is None
+    assert current(PurePath(root), PAN) is None
 
 
 def test_a_current_moved_meanwhile_stays_and_is_named(
@@ -830,12 +888,12 @@ def test_a_current_moved_meanwhile_stays_and_is_named(
     write(export / "mtl.usda", MTL)
     publish_run(registry, root, export / "geo.usda")
     publish_run(registry, root, export / "mtl.usda", product="mtl")
-    make_current(PurePosixPath(root), PAN, 1)
+    make_current(PurePath(root), PAN, 1)
     register = registry.register
 
     def move_meanwhile(asset: Asset, *, product: str, version: int, path: PurePosixPath) -> str:
         if product == "asset":
-            make_current(PurePosixPath(root), PAN, 2)
+            make_current(PurePath(root), PAN, 2)
         return register(asset, product=product, version=version, path=path)
 
     monkeypatch.setattr(registry, "register", move_meanwhile)
@@ -850,7 +908,7 @@ def test_a_current_moved_meanwhile_stays_and_is_named(
         "published geo v002 and asset v003, but asset v002 became current while you were "
         "publishing, pinning geo v001, mtl v001; asset v003 is not current; publish again"
     ) in str(raised.value)
-    assert current(PurePosixPath(root), PAN) == 2
+    assert current(PurePath(root), PAN) == 2
 
 
 def test_a_race_on_one_component_is_settled_by_piper_current(
@@ -878,9 +936,10 @@ def test_a_race_on_one_component_is_settled_by_piper_current(
         "asset v004 became current while you were publishing, pinning geo v003; "
         "`piper current 'Frying Pan' 3` makes asset v003 current instead"
     )
-    assert current(PurePosixPath(root), PAN) == 4
+    assert current(PurePath(root), PAN) == 4
 
 
+@unwritable
 def test_a_current_that_cannot_be_written_leaves_both_versions_installed(
     registry: Registry, root: Path, export: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -907,7 +966,7 @@ def test_a_current_that_cannot_be_written_leaves_both_versions_installed(
         "published geo v002 and asset v002, but could not make it current: could not write"
         in str(raised.value)
     )
-    assert current(PurePosixPath(root), PAN) == 1
+    assert current(PurePath(root), PAN) == 1
 
 
 @pytest.mark.parametrize(
@@ -939,7 +998,7 @@ def test_a_current_lost_after_installing_still_names_both_versions(
 
     def lose_meanwhile(asset: Asset, *, product: str, version: int, path: PurePosixPath) -> str:
         if product == "asset":
-            lose(current_path(PurePosixPath(root), PAN))
+            lose(current_path(PurePath(root), PAN))
         return register(asset, product=product, version=version, path=path)
 
     monkeypatch.setattr(registry, "register", lose_meanwhile)

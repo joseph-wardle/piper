@@ -1,5 +1,5 @@
 import textwrap
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath
 
 import pytest
 from pxr import Ar, Sdf, Usd, UsdGeom, UsdShade
@@ -76,13 +76,13 @@ MTL = """
 
 
 @pytest.fixture
-def root(tmp_path: Path) -> PurePosixPath:
+def root(tmp_path: Path) -> PurePath:
     root = tmp_path / "production"
     (root / "asset" / "kitchen" / "frying_pan").mkdir(parents=True)
-    return PurePosixPath(root)
+    return PurePath(root)
 
 
-def install(root: Path | PurePosixPath, product: str, version: int, text: str) -> Path:
+def install(root: Path | PurePath, product: str, version: int, text: str) -> Path:
     layer = Path(
         root, "asset/kitchen/frying_pan/publish", product, f"v{version:03d}", f"{product}.usda"
     )
@@ -91,7 +91,7 @@ def install(root: Path | PurePosixPath, product: str, version: int, text: str) -
     return layer
 
 
-def build(root: PurePosixPath, tmp_path: Path, pins: dict[str, int], version: int = 1) -> Path:
+def build(root: PurePath, tmp_path: Path, pins: dict[str, int], version: int = 1) -> Path:
     staged = tmp_path / f"staged{version}"
     staged.mkdir()
     written = compose.write_asset_version(staged, root=root, asset=PAN, pins=pins)
@@ -103,7 +103,7 @@ def build(root: PurePosixPath, tmp_path: Path, pins: dict[str, int], version: in
 
 
 def test_the_entry_composes_the_pinned_geometry_and_material(
-    root: PurePosixPath, tmp_path: Path
+    root: PurePath, tmp_path: Path
 ) -> None:
     install(root, "geo", 1, GEO)
     install(root, "mtl", 1, MTL)
@@ -134,7 +134,7 @@ def test_the_entry_composes_the_pinned_geometry_and_material(
 
 
 def test_the_payload_is_readable_as_pins_and_spelled_from_the_root(
-    root: PurePosixPath, tmp_path: Path
+    root: PurePath, tmp_path: Path
 ) -> None:
     install(root, "geo", 2, GEO)
     install(root, "mtl", 1, MTL)
@@ -147,7 +147,7 @@ def test_the_payload_is_readable_as_pins_and_spelled_from_the_root(
     assert compose.pins(root, PAN, 1) == {"geo": 2, "mtl": 1}
 
 
-def test_a_pin_must_name_an_installed_version(root: PurePosixPath, tmp_path: Path) -> None:
+def test_a_pin_must_name_an_installed_version(root: PurePath, tmp_path: Path) -> None:
     install(root, "geo", 1, GEO)
     install(root, "geo", 3, GEO)
 
@@ -162,7 +162,7 @@ def test_a_pin_must_name_an_installed_version(root: PurePosixPath, tmp_path: Pat
 
 
 def test_a_preview_composes_the_exported_layer_in_place_of_its_products_pin(
-    root: PurePosixPath, tmp_path: Path
+    root: PurePath, tmp_path: Path
 ) -> None:
     install(root, "geo", 1, GEO)
     install(root, "mtl", 1, MTL)

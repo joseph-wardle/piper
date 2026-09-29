@@ -54,6 +54,14 @@ def export_textures(directory: Path, sets: list[str]) -> list[str]:
             warnings.append(str(result.message).strip())
         elif result.status != painter_export.ExportStatus.Success:
             raise PiperError(f"Painter did not export the textures ({result.message})")
+    # Painter reports success when a stack has no channel for a map, and exports nothing.
+    missing = export.missing_maps(directory, sets)
+    if missing:
+        warnings.append(
+            "No map was exported for these texture sets; Painter exports a map only from a "
+            "stack with its channel:\n"
+            + "\n".join(f"{name}: {', '.join(lacking)}" for name, lacking in missing.items())
+        )
     return warnings
 
 

@@ -1,5 +1,5 @@
 from dataclasses import replace
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath
 
 import pytest
 
@@ -14,7 +14,7 @@ def test_a_renamed_asset_keeps_the_directory_its_pipe_name_gave_it(tmp_path: Pat
     made = tmp_path / "asset" / "kitchen" / "frying_pan"
     made.mkdir(parents=True)
 
-    assert asset_directory(PurePosixPath(tmp_path), replace(PAN, name="Cast Iron Pan")) == made
+    assert asset_directory(PurePath(tmp_path), replace(PAN, name="Cast Iron Pan")) == made
 
 
 @pytest.mark.parametrize(
@@ -33,4 +33,4 @@ def test_an_asset_with_no_directory_is_refused_with_what_would_give_it_one(
     (tmp_path / "asset" / "kitchen" / "frying_pan").mkdir(parents=True)
 
     with pytest.raises(PiperError, match=remedy):
-        asset_directory(PurePosixPath(tmp_path), asset)
+        asset_directory(PurePath(tmp_path), asset)

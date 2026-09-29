@@ -20,6 +20,7 @@ def test_convert_needs_no_production_and_finds_renderman_through_rmantree(
     oiiotool.parent.mkdir(parents=True)
     oiiotool.write_text(_STAND_IN, encoding="utf-8")
     oiiotool.chmod(0o755)
+    oiiotool.with_suffix(".cmd").write_text(f'@"{sys.executable}" "%~dp0rmanoiiotool" %*\n')
     monkeypatch.setenv("RMANTREE", str(oiiotool.parents[1]))
     export = tmp_path / "export"
     export.mkdir()

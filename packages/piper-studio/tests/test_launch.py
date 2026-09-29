@@ -1,7 +1,8 @@
 import os
+import re
 import subprocess
 import sys
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 import pytest
@@ -45,7 +46,8 @@ def production_at(root: Path, maya: str | None = None, houdini: str | None = Non
         name="sandwich",
         production=Production(
             name="sandwich",
-            root=PurePosixPath(root),
+            root=PurePosixPath(root.as_posix()),
+            windows_root=PureWindowsPath(root),
             types=("Prop",),
             shotgrid=ShotGridConfig(site="https://example.invalid", script="piper", project=782),
             software=Software(maya=maya, houdini=houdini),
@@ -95,7 +97,7 @@ def test_a_production_is_made_in_the_maya_it_names(
 
     refused = str(refusal.value)
     assert "sandwich needs Maya 2027" in refused
-    assert "/usr/autodesk/maya2027" in refused
+    assert str(Path("/usr/autodesk/maya2027")) in refused
     assert "set MAYA_LOCATION" in refused
 
 
@@ -186,13 +188,15 @@ def test_a_painter_this_machine_does_not_have_is_reported_with_the_variable_to_s
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv(launch.PAINTER_ENV, raising=False)
+    # Whether or not this machine has Painter.
+    monkeypatch.setattr(launch.os, "access", lambda _path, _mode: False)
 
     with pytest.raises(PiperError) as refusal:
         launch.painter_executable(GENERAL_PROFILE)
 
     refused = str(refusal.value)
     assert "general needs Substance Painter" in refused
-    assert "C:/Program Files/Adobe/Adobe Substance 3D Painter" in refused
+    assert str(Path("C:/Program Files/Adobe/Adobe Substance 3D Painter")) in refused
     assert f"set {launch.PAINTER_ENV}" in refused
 
 
@@ -207,7 +211,7 @@ def test_a_production_is_made_in_the_houdini_it_names(
 
     refused = str(refusal.value)
     assert "sandwich needs Houdini 21.5" in refused
-    assert "/opt/hfs21.5" in refused
+    assert str(Path("/opt/hfs21.5")) in refused
     assert "set HFS" in refused
 
 
@@ -243,7 +247,7 @@ def test_a_host_environment_that_was_never_built_is_refused_with_its_remedy(
 ) -> None:
     (release / "packages" / "piper-maya" / ".venv" / "lib").rename(release / "elsewhere")
 
-    with pytest.raises(PiperError, match=f"run `just sync` in {release}"):
+    with pytest.raises(PiperError, match=re.escape(f"run `just sync` in {release}")):
         launch.python_path("maya")
 
 

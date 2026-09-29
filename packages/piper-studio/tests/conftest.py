@@ -26,4 +26,6 @@ def renderman(tmp_path: Path) -> Path:
     oiiotool.parent.mkdir(parents=True)
     oiiotool.write_text(_STAND_IN, encoding="utf-8")
     oiiotool.chmod(0o755)
+    # Windows runs a script by its extension, not its `#!`.
+    oiiotool.with_suffix(".cmd").write_text(f'@"{sys.executable}" "%~dp0rmanoiiotool" %*\n')
     return install

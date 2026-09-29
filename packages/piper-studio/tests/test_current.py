@@ -1,7 +1,7 @@
 import subprocess
 import sys
 import textwrap
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 
 import pytest
 from pxr import Ar, Usd, UsdGeom
@@ -16,14 +16,14 @@ PAN = Asset(id="7701", name="Frying Pan", type="Prop", folder="kitchen", pipe_na
 
 
 @pytest.fixture
-def root(tmp_path: Path) -> PurePosixPath:
+def root(tmp_path: Path) -> PurePath:
     root = tmp_path / "production"
     (root / "asset" / "kitchen" / "frying_pan").mkdir(parents=True)
     install(root, "geo", 1, GEO)
     install(root, "geo", 2, GEO)
     for version in (1, 2):
-        build(PurePosixPath(root), tmp_path, {"geo": version}, version)
-    return PurePosixPath(root)
+        build(PurePath(root), tmp_path, {"geo": version}, version)
+    return PurePath(root)
 
 
 def test_current_is_none_until_made_and_moves_between_installed_versions(
@@ -70,11 +70,11 @@ def test_current_and_pins_read_from_a_fresh_interpreter(root: PurePosixPath) -> 
     script = textwrap.dedent(
         """
         import sys
-        from pathlib import PurePosixPath
+        from pathlib import PurePath
         from piper.tracker import Asset
         from piper_studio import compose
 
-        root = PurePosixPath(sys.argv[1])
+        root = PurePath(sys.argv[1])
         asset = Asset(
             id="7701", name="Frying Pan", type="Prop", folder="kitchen", pipe_name="frying_pan"
         )

@@ -12,7 +12,7 @@ def export(tmp_path: Path) -> Path:
     """A Painter export of one slot: a colour map, a data map, and the preview beside them."""
     export = tmp_path / "export"
     export.mkdir()
-    for name in ("body_BaseColor.1001.png", "body_Normal.1001.png", "body_BaseColor.1001.jpg"):
+    for name in ("body_BaseColor.1001.png", "body_Normal.1001.png", "body_BaseColor.1001.jpeg"):
         (export / name).touch()
     return export
 
@@ -59,7 +59,7 @@ def test_colour_maps_become_acescg_half_exr_and_data_maps_tiff_as_exported_besid
         ],
     ]
     assert sorted(path.name for path in export.iterdir()) == [
-        "body_BaseColor.1001.jpg",
+        "body_BaseColor.1001.jpeg",
         "body_BaseColor.1001.png",
         "body_BaseColor.1001.tex",
         "body_Normal.1001.png",

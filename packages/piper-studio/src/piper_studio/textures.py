@@ -2,6 +2,7 @@
 
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from piper.errors import PiperError
 
 PRODUCT = "tex"
 TEXTURE = ".tex"
-PREVIEW = ".jpg"
+PREVIEW = ".jpeg"
 RENDERMAN_VERSION = "27.3"
 
 # Painted in sRGB and rendered in ACEScg, so the texture is converted and kept in half.
@@ -33,8 +34,11 @@ def convert(directory: Path, *, renderman: Path, into: Path | None = None) -> li
     if not exported:
         raise PiperError(f"cannot convert {directory}: it holds no PNG")
     maps = {png: _map_name(png) for png in exported}
-    oiiotool = renderman / "bin" / "rmanoiiotool"
-    if not os.access(oiiotool, os.X_OK):
+    # By its bare name, as Windows calls it `rmanoiiotool.exe`. Python 3.11 on Windows
+    # also looks in the working directory first, so only one in `bin` is RenderMan's.
+    tools = renderman / "bin"
+    oiiotool = shutil.which("rmanoiiotool", path=tools)
+    if oiiotool is None or Path(oiiotool).parent != tools:
         raise PiperError(
             f"cannot convert {directory}: RenderMan {RENDERMAN_VERSION} is not installed at "
             f"{renderman}; set RMANTREE to where it is"
@@ -46,7 +50,9 @@ def convert(directory: Path, *, renderman: Path, into: Path | None = None) -> li
     textures: list[Path] = []
     for png, name in maps.items():
         texture = (into / png.name).with_suffix(TEXTURE)
-        command = _command(png, texture, colour=name in COLOUR_MAPS, renderman=renderman)
+        command = _command(
+            png, texture, colour=name in COLOUR_MAPS, renderman=renderman, oiiotool=oiiotool
+        )
         ran = subprocess.run(command, capture_output=True, text=True, check=False)
         # A truncated PNG makes oiiotool complain on stderr, write a texture, and exit 0.
         if ran.returncode != 0 or ran.stderr:
@@ -83,9 +89,11 @@ def _map_name(png: Path) -> str:
     return name
 
 
-def _command(png: Path, texture: Path, *, colour: bool, renderman: Path) -> list[str]:
+def _command(
+    png: Path, texture: Path, *, colour: bool, renderman: Path, oiiotool: str
+) -> list[str]:
     """The oiiotool call that converts ``png`` into ``texture``."""
-    call = [str(renderman / "bin" / "rmanoiiotool")]
+    call = [oiiotool]
     if colour:
         config = renderman / "lib" / "ocio" / "ACES-1.3" / "config.ocio"
         call += ["--colorconfig", str(config), str(png)]

@@ -676,10 +676,10 @@ def check_material(production: "Production", check: "Callable[..., None]") -> No
     exported = root / "class_textures"
     exported.mkdir()
     for udim in ("1001", "1002"):
-        for extension in ("tex", "jpg", "png"):
+        for extension in ("tex", "jpeg", "png"):
             (exported / f"woodSG_BaseColor.{udim}.{extension}").touch()
     for name in ("Metallic", "SpecularRoughness", "Normal", "Emissive", "Presence"):
-        for extension in ("tex", "jpg", "png"):
+        for extension in ("tex", "jpeg", "png"):
             (exported / f"woodSG_{name}.1001.{extension}").touch()
     for name in ("woodSG_Displacement.1001.tex", "metalSG_BaseColor.1001.tex", "Thumbs.db"):
         (exported / name).touch()
@@ -736,7 +736,7 @@ def check_material(production: "Production", check: "Callable[..., None]") -> No
         and source(preview, "normal") == ("preview_Normal", "rgb")
         and source(normal, "st") == ("st", "result")
         and wood.node("preview_BaseColor").parm("file").eval()
-        == f"{exported}/woodSG_BaseColor.<UDIM>.jpg"
+        == f"{exported}/woodSG_BaseColor.<UDIM>.jpeg"
         and wood.node("preview_BaseColor").parm("sourceColorSpace").eval() == "sRGB"
         and normal.parm("sourceColorSpace").eval() == "raw"
         and normal.parmTuple("scale").eval() == (2, 2, 2, 1)
@@ -777,7 +777,7 @@ def check_material(production: "Production", check: "Callable[..., None]") -> No
             and surface_of("woodSG") == "/kettle/mtl/woodSG/preview.outputs:surface"
             and surface_of("metalSG") == "/kettle/mtl/metalSG/rman_preview.outputs:surface"
             and colour.default.path.endswith("/class_textures/woodSG_BaseColor.<UDIM>.tex")
-            and jpeg.default.path.endswith("/class_textures/woodSG_BaseColor.<UDIM>.jpg"),
+            and jpeg.default.path.endswith("/class_textures/woodSG_BaseColor.<UDIM>.jpeg"),
             f"{surface_of('woodSG')} {surface_of('metalSG')} {colour.default}",
         )
 
@@ -804,7 +804,7 @@ def check_material(production: "Production", check: "Callable[..., None]") -> No
         "pointed at a directory lacking maps, the materials read what is not there, and it is said",
         len(missing) == 12
         and ("woodSG/Emissive", "woodSG_Emissive.<UDIM>.tex") in missing
-        and ("woodSG/preview_BaseColor", "woodSG_BaseColor.<UDIM>.jpg") in missing
+        and ("woodSG/preview_BaseColor", "woodSG_BaseColor.<UDIM>.jpeg") in missing
         and ("metalSG/BaseColor", "metalSG_BaseColor.<UDIM>.tex") in missing
         and not any(reader == "woodSG/BaseColor" for reader, _ in missing)
         and material.added_line(material.AddMaterialsResult((), (), missing[:1]))
@@ -864,7 +864,7 @@ def check_material(production: "Production", check: "Callable[..., None]") -> No
     export = root / "export" / "teapot_textures"
     export.mkdir(parents=True)
     for name in ("BaseColor", "Normal"):
-        for extension in ("png", "jpg"):
+        for extension in ("png", "jpeg"):
             (export / f"woodSG_{name}.1001.{extension}").touch()
     first = publish_textures(
         registry,

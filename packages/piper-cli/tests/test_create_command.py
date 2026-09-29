@@ -1,4 +1,5 @@
 import json
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -61,6 +62,13 @@ def test_an_unused_folder_names_the_flag_that_starts_it(
     assert (root / "asset" / "garage" / "toaster").is_dir()
 
 
+# Windows ignores a directory's mode, so chmod cannot make one unwritable there.
+unwritable = pytest.mark.skipif(
+    sys.platform == "win32", reason="chmod cannot make a directory unwritable on Windows"
+)
+
+
+@unwritable
 def test_a_partial_create_as_json_still_writes_the_record(
     run: Run, tracker: Tracker, root: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

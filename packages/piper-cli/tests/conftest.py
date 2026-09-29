@@ -1,3 +1,4 @@
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from piper_studio.production import PRODUCTION_ENV
 
 _PRODUCTION = """
 name = "sandwich"
-root = "{root}"
+{root}
 types = ["Prop", "Set Piece"]
 
 [shotgrid]
@@ -35,6 +36,14 @@ def root(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def root_setting(root: Path) -> str:
+    """How a configuration names ``root``: on Windows, a POSIX spelling and the root as reached."""
+    if sys.platform == "win32":
+        return f"root = \"/production\"\nwindows_root = '{root}'"
+    return f'root = "{root}"'
+
+
+@pytest.fixture
 def layer(root: Path, tmp_path: Path) -> Path:
     """An exported layer, beside the directory of the asset it belongs to."""
     (root / "asset" / "kitchen" / "frying_pan").mkdir(parents=True)
@@ -47,10 +56,10 @@ def layer(root: Path, tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def production(root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def production(root_setting: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A real configuration file the command loads for itself."""
     path = tmp_path / "production.toml"
-    path.write_text(_PRODUCTION.format(root=root), encoding="utf-8")
+    path.write_text(_PRODUCTION.format(root=root_setting), encoding="utf-8")
     monkeypatch.setenv(PRODUCTION_ENV, str(path))
     return path
 

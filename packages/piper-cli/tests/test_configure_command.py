@@ -9,7 +9,7 @@ from piper_studio.production import PRODUCTION_ENV, Production
 
 _PRODUCTION = """
 name = "sandwich"
-root = "{root}"
+{root}
 types = ["Prop"]
 
 [shotgrid]
@@ -20,11 +20,11 @@ project = 716
 
 
 @pytest.fixture
-def sandwich(root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def sandwich(root_setting: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A production Piper knows by name."""
     monkeypatch.delenv(PRODUCTION_ENV, raising=False)
     path = tmp_path / "sandwich.toml"
-    path.write_text(_PRODUCTION.format(root=root), encoding="utf-8")
+    path.write_text(_PRODUCTION.format(root=root_setting), encoding="utf-8")
     monkeypatch.setattr(profile, "PRODUCTIONS", {"sandwich": path})
     return path
 
@@ -66,7 +66,7 @@ def test_a_later_command_works_in_the_selected_production(
 
     assert cli.main(("find", "pan")) == 0
 
-    assert [(one.shotgrid.project, str(one.root)) for one in worked_in] == [(716, str(root))]
+    assert [(one.shotgrid.project, str(one.local_root)) for one in worked_in] == [(716, str(root))]
 
 
 def test_an_override_is_named_rather_than_applied_silently(

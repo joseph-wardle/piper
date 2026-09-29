@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path, PurePath, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
 
 from pxr import Ar, Sdf, Tf, Usd, UsdUtils
@@ -563,7 +563,8 @@ def _resolver_context(root: PurePath) -> Ar.DefaultResolverContext:
 
 
 def _unresolved_or_dirty(dependencies: _Dependencies) -> list[str]:
-    problems = [f"{path} does not resolve" for path in dependencies.unresolved]
+    # As this machine spells it: USD joins with `/` whatever the platform.
+    problems = [f"{Path(path)} does not resolve" for path in dependencies.unresolved]
     problems += [f"{path} has unsaved edits in this session" for path in dependencies.dirty]
     return problems
 
@@ -594,7 +595,8 @@ def _absolute_spellings(staging: Path, layer: Path) -> list[str]:
     spellings: list[str] = []
 
     def keep_absolute(spelling: str) -> str:
-        if spelling.startswith("/"):
+        # A drive or share is as absolute as a leading slash, wherever the layer is read.
+        if spelling.startswith("/") or PureWindowsPath(spelling).drive:
             spellings.append(spelling)
         return spelling
 

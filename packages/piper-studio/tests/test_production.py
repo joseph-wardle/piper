@@ -1,3 +1,4 @@
+import re
 import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
@@ -38,6 +39,7 @@ def test_reads_the_production_its_storage_and_its_shotgrid_project(tmp_path: Pat
 def test_a_windows_machine_reaches_the_root_by_the_spelling_the_configuration_gives_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
     production = load_production(write_production(tmp_path, _COMPLETE))
     assert production.windows_root is None
     assert production.local_root == production.root
@@ -94,7 +96,7 @@ def test_an_unset_environment_variable_says_which_one(monkeypatch: pytest.Monkey
 def test_a_missing_file_names_the_path(tmp_path: Path) -> None:
     missing = tmp_path / "absent.toml"
 
-    with pytest.raises(ConfigError, match=str(missing)):
+    with pytest.raises(ConfigError, match=re.escape(str(missing))):
         load_production(missing)
 
 

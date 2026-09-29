@@ -1,4 +1,4 @@
-import os
+import posixpath
 from pathlib import PurePosixPath, PureWindowsPath
 
 import pytest
@@ -94,7 +94,7 @@ def test_a_version_number_is_spelled_with_at_least_three_digits() -> None:
 def test_a_path_inside_a_version_names_that_version(path: str, version: str | None) -> None:
     root = PurePosixPath("/production/shows/pan")
 
-    found = version_directory(root, PurePosixPath(os.path.normpath(root / path)))
+    found = version_directory(root, PurePosixPath(posixpath.normpath(root / path)))
 
     assert found == (root / version if version else None)
 

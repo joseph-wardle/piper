@@ -1,6 +1,6 @@
 import re
 from dataclasses import replace
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 
 import pytest
 
@@ -25,19 +25,19 @@ def root(tmp_path: Path) -> Path:
 def test_work_is_one_file_in_a_directory_made_for_its_context(root: Path) -> None:
     pan = root / "asset" / "kitchen" / "frying_pan"
 
-    file = prepare_work(root=PurePosixPath(root), asset=PAN, context=MODELING)
+    file = prepare_work(root=PurePath(root), asset=PAN, context=MODELING)
 
     assert file == pan / "work" / "modeling" / "frying_pan.mb"
     assert file.parent.is_dir() and not file.exists()
     # The terminal prepares work before Maya starts, and Maya prepares it again.
-    assert prepare_work(root=PurePosixPath(root), asset=PAN, context=MODELING) == file
+    assert prepare_work(root=PurePath(root), asset=PAN, context=MODELING) == file
 
 
 def test_an_asset_with_no_directory_is_not_given_one_by_opening_its_work(root: Path) -> None:
     kettle = replace(PAN, name="Kettle", pipe_name="kettle")
 
     with pytest.raises(PiperError, match="has no directory at"):
-        prepare_work(root=PurePosixPath(root), asset=kettle, context=MODELING)
+        prepare_work(root=PurePath(root), asset=kettle, context=MODELING)
 
     assert not (root / "asset" / "kitchen" / "kettle").exists()
 
@@ -52,7 +52,9 @@ SANDWICH = Production(
 
 
 def production_at(root: Path) -> Production:
-    return replace(SANDWICH, root=PurePosixPath(root))
+    return replace(
+        SANDWICH, root=PurePosixPath(root.as_posix()), windows_root=PureWindowsPath(root)
+    )
 
 
 def test_a_scene_at_its_work_path_carrying_its_stamp_names_its_asset(

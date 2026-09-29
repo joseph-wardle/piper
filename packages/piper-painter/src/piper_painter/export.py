@@ -60,3 +60,14 @@ def _map(name: str, preview: bool) -> dict[str, object]:
         ],
         "parameters": parameters,
     }
+
+
+def missing_maps(directory: Path, sets: list[str]) -> dict[str, list[str]]:
+    """Each map of the table ``directory`` has no PNG of, with the sets lacking it."""
+    exported = {
+        (named["slot"], named["map"])
+        for png in directory.glob("*.png")
+        if (named := textures.NAMED.fullmatch(png.name))
+    }
+    lacking = {name: [s for s in sets if (s, name) not in exported] for name in textures.MAPS}
+    return {name: lacked for name, lacked in lacking.items() if lacked}

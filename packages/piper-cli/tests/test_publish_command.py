@@ -139,11 +139,12 @@ def painter_export(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     oiiotool.parent.mkdir(parents=True)
     oiiotool.write_text(_OIIOTOOL, encoding="utf-8")
     oiiotool.chmod(0o755)
+    oiiotool.with_suffix(".cmd").write_text(f'@"{sys.executable}" "%~dp0rmanoiiotool" %*\n')
     monkeypatch.setenv("RMANTREE", str(oiiotool.parents[1]))
     export = tmp_path / "painter"
     export.mkdir()
     (export / "body_BaseColor.1001.png").touch()
-    (export / "body_BaseColor.1001.jpg").touch()
+    (export / "body_BaseColor.1001.jpeg").touch()
     return export
 
 

@@ -1,7 +1,7 @@
 import re
 import shutil
 import textwrap
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 
 import pytest
 from pxr import Ar, Sdf, Usd, UsdShade
@@ -68,7 +68,7 @@ MTL = f"""
                 def Shader "preview"
                 {{
                     uniform token info:id = "UsdUVTexture"
-                    asset inputs:file = @{TEX}/v001/body_BaseColor.<UDIM>.jpg@
+                    asset inputs:file = @{TEX}/v001/body_BaseColor.<UDIM>.jpeg@
                 }}
             }}
         }}
@@ -128,14 +128,14 @@ def export(directory: Path, *names: str) -> Path:
     directory.mkdir(parents=True)
     for name in names:
         (directory / f"{name}.png").touch()
-        (directory / f"{name}.jpg").touch()
+        (directory / f"{name}.jpeg").touch()
     return directory
 
 
 def publish_layer(registry: Registry, root: Path, layer: Path) -> None:
     publish(
         registry,
-        root=PurePosixPath(root),
+        root=PurePath(root),
         asset=PAN,
         product=layer.stem,
         layer=layer,
@@ -145,7 +145,7 @@ def publish_layer(registry: Registry, root: Path, layer: Path) -> None:
 def run(registry: Registry, root: Path, renderman: Path, exported: Path) -> PublishTexturesResult:
     return publish_textures(
         registry,
-        root=PurePosixPath(root),
+        root=PurePath(root),
         asset=PAN,
         export=exported,
         renderman=renderman,
@@ -182,19 +182,19 @@ def test_a_first_publish_installs_the_export_freshly_converted_and_names_lookdev
     installed = Path(result.textures.path)
     assert installed == root / TEX / "v001"
     assert sorted(path.name for path in installed.iterdir()) == [
-        "body_BaseColor.1001.jpg",
+        "body_BaseColor.1001.jpeg",
         "body_BaseColor.1001.png",
         "body_BaseColor.1001.tex",
-        "body_Normal.1001.jpg",
+        "body_Normal.1001.jpeg",
         "body_Normal.1001.png",
         "body_Normal.1001.tex",
     ]
     assert (installed / "body_BaseColor.1001.tex").read_text(encoding="utf-8") == ""
     assert sorted(path.name for path in exported.iterdir()) == [
-        "body_BaseColor.1001.jpg",
+        "body_BaseColor.1001.jpeg",
         "body_BaseColor.1001.png",
         "body_BaseColor.1001.tex",
-        "body_Normal.1001.jpg",
+        "body_Normal.1001.jpeg",
         "body_Normal.1001.png",
     ]
     assert (exported / "body_BaseColor.1001.tex").read_text(encoding="utf-8") == "stale"
@@ -204,7 +204,7 @@ def test_a_first_publish_installs_the_export_freshly_converted_and_names_lookdev
     )
     spelled = PurePosixPath("asset/kitchen/frying_pan/publish/tex/v001")
     assert registrations == [(PAN, "tex", 1, spelled)]
-    assert current(PurePosixPath(root), PAN) is None
+    assert current(PurePath(root), PAN) is None
 
 
 @pytest.mark.usefixtures("lookdev")
@@ -237,7 +237,7 @@ def test_the_material_is_derived_reading_the_new_version_and_keeping_what_it_lac
     assert texture_paths(root, 3) == {
         "rman": f"{TEX}/v002/body_BaseColor.<UDIM>.tex",
         "normal": f"{TEX}/v001/body_Normal.<UDIM>.tex",
-        "preview": f"{TEX}/v002/body_BaseColor.<UDIM>.jpg",
+        "preview": f"{TEX}/v002/body_BaseColor.<UDIM>.jpeg",
     }
     assert [(product, version) for _, product, version, _ in registrations[-3:]] == [
         ("tex", 2),
@@ -254,7 +254,7 @@ def test_a_version_the_material_reads_nothing_of_is_installed_and_derives_nothin
 
     assert (unread.material, unread.derived_from) == (None, None)
     assert unread.warnings == (
-        "body_BaseColor.<UDIM>.jpg is not in tex v002, so the material keeps reading it from "
+        "body_BaseColor.<UDIM>.jpeg is not in tex v002, so the material keeps reading it from "
         "tex v001",
         "body_BaseColor.<UDIM>.tex is not in tex v002, so the material keeps reading it from "
         "tex v001",
@@ -262,7 +262,7 @@ def test_a_version_the_material_reads_nothing_of_is_installed_and_derives_nothin
         "nothing mtl v001 reads is in tex v002, so no material was derived; point it at tex v002 "
         "in Houdini",
     )
-    assert current_pins(PurePosixPath(root), PAN) == (2, {"geo": 1, "mtl": 1})
+    assert current_pins(PurePath(root), PAN) == (2, {"geo": 1, "mtl": 1})
 
     publish_layer(registry, root, write(tmp_path / "plain" / "mtl.usda", PLAIN_MTL))
     plain = run(registry, root, renderman, export(tmp_path / "plain_export", "body_BaseColor.1001"))
@@ -272,7 +272,7 @@ def test_a_version_the_material_reads_nothing_of_is_installed_and_derives_nothin
         "mtl v002 reads no published textures, so no material was derived; point it at tex v003 "
         "in Houdini",
     )
-    assert current_pins(PurePosixPath(root), PAN) == (3, {"geo": 1, "mtl": 2})
+    assert current_pins(PurePath(root), PAN) == (3, {"geo": 1, "mtl": 2})
 
 
 def test_an_export_that_cannot_be_converted_leaves_nothing(
@@ -344,7 +344,8 @@ def test_a_material_that_could_not_be_registered_or_derived_leaves_the_textures(
     assert (result.textures.version, result.derived_from) == (2, 1)
     assert result.material.component.record_id is None
     assert re.fullmatch(
-        r"published tex v002; installed .*/mtl/v002/mtl\.usda, but could not register it: .*; "
+        r"published tex v002; installed .*[/\\]mtl[/\\]v002[/\\]mtl\.usda, "
+        r"but could not register it: .*; "
         r"publishing again installs another version; no asset version was built",
         str(raised.value),
     )
@@ -359,4 +360,4 @@ def test_a_material_that_could_not_be_registered_or_derived_leaves_the_textures(
         "published tex v003, but could not derive the material: Frying Pan has no mtl v001 "
         "(installed: v002); publishing again installs another version"
     )
-    assert current_pins(PurePosixPath(root), PAN) == (2, {"geo": 1, "mtl": 1})
+    assert current_pins(PurePath(root), PAN) == (2, {"geo": 1, "mtl": 1})

@@ -15,7 +15,7 @@ def maps(config: dict[str, object]) -> list[dict[str, Any]]:
 def test_every_map_of_the_table_is_exported_from_its_painter_channel() -> None:
     config = export.config(Path("/scratch/export"), ["paint", "metal"], preview=False)
 
-    assert config["exportPath"] == "/scratch/export"
+    assert config["exportPath"] == str(Path("/scratch/export"))
     assert config["exportList"] == [{"rootPath": "paint"}, {"rootPath": "metal"}]
     assert [m["fileName"] for m in maps(config)] == [
         f"$textureSet_{name}(.$udim)" for name in textures.MAPS
@@ -42,4 +42,17 @@ def test_previews_are_the_same_maps_as_1k_jpegs() -> None:
     assert len(maps(config)) == len(textures.MAPS)
     assert {str(m["parameters"]) for m in maps(config)} == {
         str({"fileFormat": "jpeg", "bitDepth": "8", "sizeLog2": 10})
+    }
+
+
+def test_a_map_a_set_has_no_png_of_is_named_with_the_sets(tmp_path: Path) -> None:
+    for name in textures.MAPS:
+        (tmp_path / f"paint_{name}.1001.png").touch()
+        if name not in ("Emissive", "Presence"):
+            (tmp_path / f"metal_{name}.1002.png").touch()
+    (tmp_path / "metal_Emissive.1002.jpeg").touch()
+
+    assert export.missing_maps(tmp_path, ["paint", "metal"]) == {
+        "Emissive": ["metal"],
+        "Presence": ["metal"],
     }

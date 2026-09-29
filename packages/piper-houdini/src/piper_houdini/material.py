@@ -149,7 +149,7 @@ def _directory(node: hou.Node) -> Path:
 
 
 def _texture_sets(directory: Path) -> dict[str, dict[str, set[str]]]:
-    """Each texture set in ``directory``, its maps, and the suffixes each map has: .tex, .jpg."""
+    """Each texture set in ``directory``, its maps, and the suffixes each map has: .tex, .jpeg."""
     sets: dict[str, dict[str, set[str]]] = {}
     for path in sorted(directory.iterdir()):
         named = textures.NAMED.fullmatch(path.name)
